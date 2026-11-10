@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum StructureType {
+  DIRECTION
+  AGENCY
+  POINT_OF_SALE
+  OTHER
+}
+
+enum RoleType {
+  EMPLOYEE
+  HIERARCHICAL_MANAGER
+  DELEGATED_REPRESENTATIVE
+  DEPARTMENT_MANAGER
+  DEPARTMENT_DELEGATE
+  DPMG_MANAGER
+  DPMG_DELEGATE
+  DFC_CONTROLLER
+  CPMP_USER
+  DG_USER
+  EXECUTION_AGENT
+  TECHNICAL_ADMIN
+  SUPER_ADMIN
+}
+
+enum DemandeStatus {
+  BROUILLON
+  EN_ATTENTE_VALIDATION
+  EN_ATTENTE_ANALYSE
+  EN_ATTENTE_DECISION
+  EN_ATTENTE_FINANCEMENT
+  EN_ATTENTE_EXECUTION
+  EN_ATTENTE_CONFIRMATION_SATISFACTION
+  CLOTUREE
+  RETOURNEE
+  REFUSEE
+}
+
+enum DemandeDecisionType {
+  SOUMISSION
+  APPROBATION
+  REFUS
+  RETOUR
+  AVIS_DEPARTEMENTAL
+  DECISION_DPMG_APPROBATION
+  DECISION_DPMG_REFUS
+  DECISION_DPMG_RETOUR
+  DECISION_DFC_DISPONIBLE
+  DECISION_DFC_INDISPONIBLE
+  DEMANDE_EXECUTION
+  DEMANDE_EXECUTEE
+  DEMANDE_CLOTUREE
+  OBSERVATION_DG
+  OBSERVATION_CPMP
+}
+
+enum ConsolidationStatus {
+  BROUILLON
+  TRANSMISE
+}
+
+enum DemandeCategory {
+  INFRASTRUCTURE
+  LOGISTIQUE
+  MAGASIN
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  firstName     String
+  lastName      String
+  passwordHash  String
+  phone         String?
+  status        UserStatus @default(ACTIVE)
+  mustChangePassword Boolean @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  structureRoles  UserStructureRole[]
+  sessions        Session[]
+  demandes        Demande[]
+  demandeDecisions DemandeDecision[]
+  delegatedRoles  UserStructureRole[] @relation("UserDelegations")
+  notifications   Notification[]
+  notificationOutboxes NotificationOutbox[]
+  executionStartedDemandes Demande[] @relation("ExecutionStarted")
+  satisfiedDemandes Demande[] @relation("Satisfied")
+  closedDemandes Demande[] @relation("Closed")
+  adminAuditLogs AdminAuditLog[] @relation("AdminAuditActor")
+  consolidations Consolidation[] @relation("ConsolidationAuthor")
+  consolidationObservations ConsolidationObservation[]
+}
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation("AdminAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action    String
+  targetType String
+  targetId   String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model Structure {
+  id        String         @id @default(cuid())
+  code      String         @unique
+  name      String
+  type      StructureType
+  parentId  String?
+  parent    Structure?     @relation("StructureHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Structure[]    @relation("StructureHierarchy")
+  status    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  userRoles UserStructureRole[]
+  department Department?
+}
+
+model Department {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  code        String    @unique
+  description String?
+  status      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  structure   Structure? @relation(fields: [structureId], references: [id])
+  structureId String?   @unique
+
+  demandes Demande[]
+
+  @@index([name])
+}
+
+model UserStructureRole {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  structureId   String?
+  structure     Structure? @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  role          RoleType
+  scope         String?
+  startDate     DateTime  @default(now())
+  endDate       DateTime?
+  delegationNote String?
+  delegatedFromUserId String?
+  delegatedFrom User?     @relation("UserDelegations", fields: [delegatedFromUserId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, structureId, role])
+  @@index([userId])
+  @@index([structureId])
+  @@index([role])
+  @@index([startDate, endDate])
+  @@index([delegatedFromUserId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([token])
+}
+
+model Demande {
+  id          String         @id @default(cuid())
+  reference   String         @unique
+  title       String
+  description String
+  status      DemandeStatus  @default(BROUILLON)
+  category    DemandeCategory
+  isUrgent    Boolean        @default(false)
+  authorId    String
+  author      User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  departmentId String
+  department  Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  consolidationId String?
+  consolidation   Consolidation? @relation(fields: [consolidationId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  submittedAt DateTime?
+
+  executionStartedAt DateTime?
+  executionStartedBy String?
+  executionStarter   User?  @relation("ExecutionStarted", fields: [executionStartedBy], references: [id], onDelete: SetNull)
+  satisfactionProofUrl String?
+  satisfactionObservations String?
+  satisfiedAt    DateTime?
+  satisfiedBy    String?
+  satisfier      User?  @relation("Satisfied", fields: [satisfiedBy], references: [id], onDelete: SetNull)
+  closedAt       DateTime?
+  closedBy       String?
+  closer         User?  @relation("Closed", fields: [closedBy], references: [id], onDelete: SetNull)
+  closureReturnReason String?
+
+  decisions DemandeDecision[]
+  notifications Notification[]
+  notificationOutboxes NotificationOutbox[]
+
+  @@index([authorId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([isUrgent])
+  @@index([consolidationId])
+}
+
+model Consolidation {
+  id            String              @id @default(cuid())
+  reference     String              @unique
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        ConsolidationStatus @default(BROUILLON)
+  createdById   String
+  createdBy     User                @relation("ConsolidationAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  transmittedAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  demandes      Demande[]
+  observations  ConsolidationObservation[]
+
+  @@index([periodStart, periodEnd])
+  @@index([status])
+  @@index([createdById])
+}
+
+model ConsolidationObservation {
+  id             String          @id @default(cuid())
+  consolidationId String
+  consolidation  Consolidation   @relation(fields: [consolidationId], references: [id], onDelete: Restrict)
+
+  actorId        String
+  actor          User            @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  role           RoleType
+  commentaire    String
+  createdAt      DateTime        @default(now())
+
+  @@index([consolidationId, createdAt])
+  @@index([actorId])
+  @@index([role])
+}
+
+model DemandeDecision {
+  id          String             @id @default(cuid())
+  demandeId   String
+  demande     Demande            @relation(fields: [demandeId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User               @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  type        DemandeDecisionType
+  motif       String?
+  commentaire String?
+  createdAt   DateTime           @default(now())
+
+  @@index([demandeId])
+  @@index([actorId])
+  @@index([type])
+}
+enum NotificationType {
+  DEMANDE_SOUMISE
+  DEMANDE_VALIDEE
+  DEMANDE_REFUSEE
+  DEMANDE_RETOURNEE
+  AVIS_DEPARTEMENTAL
+  DECISION_DPMG_APPROBATION
+  DECISION_DPMG_REFUS
+  DECISION_DPMG_RETOUR
+  DEMANDE_EN_ATTENTE_FINANCEMENT
+  CONTROLE_DFC_DISPONIBLE
+  CONTROLE_DFC_INDISPONIBLE
+  DEMANDE_EN_ATTENTE_PROLONGEE
+  DEMANDE_EXECUTION
+  DEMANDE_EXECUTEE
+  DEMANDE_CLOTUREE
+}
+
+enum NotificationPriority {
+  NORMAL
+  HIGH
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model Notification {
+  id        String                @id @default(cuid())
+  userId    String
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  demandeId String?
+  demande   Demande?              @relation(fields: [demandeId], references: [id], onDelete: SetNull)
+  eventKey  String
+  type      NotificationType
+  title     String
+  message   String?
+  priority  NotificationPriority  @default(NORMAL)
+  isRead    Boolean               @default(false)
+  readAt    DateTime?
+  createdAt DateTime              @default(now())
+
+  @@unique([userId, eventKey])
+  @@index([userId, isRead, createdAt])
+  @@index([demandeId])
+  @@index([createdAt, id])
+}
+
+model NotificationOutbox {
+  id             String                  @id @default(cuid())
+  eventKey       String                  @unique
+  recipientUserId String
+  recipient      User                    @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  demandeId      String?
+  demande        Demande?                @relation(fields: [demandeId], references: [id], onDelete: SetNull)
+  type           NotificationType
+  title          String
+  message        String?
+  priority       NotificationPriority    @default(NORMAL)
+  status         NotificationOutboxStatus @default(PENDING)
+  attempts       Int                     @default(0)
+  availableAt    DateTime                @default(now())
+  processedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime                @default(now())
+
+  @@index([status, availableAt, createdAt])
+  @@index([recipientUserId, createdAt])
+  @@index([demandeId])
+}

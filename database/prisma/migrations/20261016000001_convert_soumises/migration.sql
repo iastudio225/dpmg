@@ -1,0 +1,1 @@
+UPDATE "Demande" SET "status" = 'EN_ATTENTE_VALIDATION' WHERE "status" = 'SOUMISE';
