@@ -45,6 +45,43 @@ async function writeAudit(
   });
 }
 
+async function getStructureType(structureId: string): Promise<StructureType | null> {
+  const row = await prisma.structure.findUnique({ where: { id: structureId }, select: { type: true } });
+  return row?.type ?? null;
+}
+
+/**
+ * Valide la compatibilité parent/enfant selon les règles V2.
+ * S'applique uniquement aux créations et modifications explicites de rattachement.
+ */
+async function assertValidParentChild(
+  childType: StructureType,
+  parentId: string,
+  structureId?: string
+): Promise<void> {
+  const parent = await prisma.structure.findUnique({
+    where: { id: parentId },
+    select: { id: true, type: true, status: true },
+  });
+  if (!parent) {
+    throw new AppError("PARENT_NOT_FOUND", "Structure parente introuvable", 404);
+  }
+  if (parent.status === false) {
+    throw new AppError("PARENT_INACTIVE", "La structure parente est inactive", 400);
+  }
+
+  if (childType === "REGIONAL_DIRECTION") {
+    if (parent.type !== "DIRECTION") {
+      throw new AppError("INVALID_PARENT_TYPE", "Une Direction Régionale doit être rattachée à la DPMG (type DIRECTION)", 400);
+    }
+  } else if (childType === "AGENCY") {
+    if (parent.type !== "REGIONAL_DIRECTION") {
+      throw new AppError("INVALID_PARENT_TYPE", "Une agence doit être rattachée à une Direction Régionale", 400);
+    }
+  }
+  // Autres types : comportement existant conservé (aucune règle nouvelle).
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -112,10 +149,7 @@ export async function createStructure(
   input: { code: string; name: string; type: StructureType; parentId?: string | null }
 ): Promise<StructureResponse> {
   if (input.parentId) {
-    const parent = await prisma.structure.findUnique({ where: { id: input.parentId }, select: { id: true } });
-    if (!parent) {
-      throw new AppError("PARENT_NOT_FOUND", "Structure parente introuvable", 404);
-    }
+    await assertValidParentChild(input.type, input.parentId);
   }
 
   try {
@@ -151,17 +185,19 @@ export async function updateStructure(
   structureId: string,
   input: { code?: string; name?: string; type?: StructureType; parentId?: string | null }
 ): Promise<StructureResponse> {
-  const existing = await prisma.structure.findUnique({ where: { id: structureId }, select: { id: true } });
+  const existing = await prisma.structure.findUnique({ where: { id: structureId }, select: { id: true, type: true } });
   if (!existing) {
     throw new AppError("STRUCTURE_NOT_FOUND", "Structure introuvable", 404);
   }
 
+  const newType = input.type ?? existing.type;
+
   if (input.parentId) {
-    const parent = await prisma.structure.findUnique({ where: { id: input.parentId }, select: { id: true } });
-    if (!parent) {
-      throw new AppError("PARENT_NOT_FOUND", "Structure parente introuvable", 404);
-    }
     await assertNoParentCycle(structureId, input.parentId);
+    // Validation hiérarchique uniquement si rattachement explicitement modifié.
+    await assertValidParentChild(newType, input.parentId, structureId);
+  } else if (input.parentId === undefined && input.type !== undefined) {
+    // Type modifié sans changement de parent : ne pas réévaluer le parent historique.
   }
 
   try {
@@ -216,4 +252,53 @@ export async function changeStructureStatus(
     return row;
   });
   return toStructureResponse(updated);
+}
+
+export async function listChildren(structureId: string): Promise<StructureResponse[]> {
+  const parent = await prisma.structure.findUnique({ where: { id: structureId }, select: { id: true } });
+  if (!parent) {
+    throw new AppError("STRUCTURE_NOT_FOUND", "Structure introuvable", 404);
+  }
+  const rows = await prisma.structure.findMany({
+    where: { parentId: structureId },
+    include: parentInclude,
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+  });
+  return rows.map(toStructureResponse);
+}
+
+export async function getAncestors(structureId: string): Promise<StructureResponse[]> {
+  const start = await prisma.structure.findUnique({ where: { id: structureId }, select: { id: true } });
+  if (!start) {
+    throw new AppError("STRUCTURE_NOT_FOUND", "Structure introuvable", 404);
+  }
+  const result: StructureResponse[] = [];
+  const seen = new Set<string>();
+  let current: string | null = structureId;
+  // On remonte depuis le parent direct.
+  const first = await prisma.structure.findUnique({ where: { id: structureId }, select: { parentId: true } });
+  current = first?.parentId ?? null;
+  while (current !== null && !seen.has(current)) {
+    seen.add(current);
+    const row = await prisma.structure.findUnique({ where: { id: current }, include: parentInclude });
+    if (!row) break;
+    result.push(toStructureResponse(row));
+    current = row.parentId;
+  }
+  return result;
+}
+
+export async function deleteStructure(actorId: string, structureId: string): Promise<void> {
+  const existing = await prisma.structure.findUnique({ where: { id: structureId }, select: { id: true } });
+  if (!existing) {
+    throw new AppError("STRUCTURE_NOT_FOUND", "Structure introuvable", 404);
+  }
+  const childCount = await prisma.structure.count({ where: { parentId: structureId } });
+  if (childCount > 0) {
+    throw new AppError("STRUCTURE_HAS_CHILDREN", "Une structure possédant des enfants ne peut pas être supprimée", 409);
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.structure.delete({ where: { id: structureId } });
+    await writeAudit(tx, actorId, "DELETE_STRUCTURE", structureId, {});
+  });
 }

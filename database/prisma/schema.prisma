@@ -15,6 +15,7 @@ enum UserStatus {
 
 enum StructureType {
   DIRECTION
+  REGIONAL_DIRECTION
   AGENCY
   POINT_OF_SALE
   OTHER
@@ -133,6 +134,8 @@ model Structure {
 
   userRoles UserStructureRole[]
   department Department?
+
+  @@index([parentId])
 }
 
 model Department {

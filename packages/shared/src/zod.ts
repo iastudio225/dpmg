@@ -29,11 +29,12 @@ export const userStatusChangeSchema = z.object({
 });
 export type UserStatusChangeRequest = z.infer<typeof userStatusChangeSchema>;
 
-export const structureTypeSchema = z.enum(["DIRECTION", "AGENCY", "POINT_OF_SALE", "OTHER"]);
+export const structureTypeSchema = z.enum(["DIRECTION", "REGIONAL_DIRECTION", "AGENCY", "POINT_OF_SALE", "OTHER"]);
 export type StructureType = z.infer<typeof structureTypeSchema>;
 
 export const structureTypeLabelFr: Record<StructureType, string> = {
   DIRECTION: "Direction",
+  REGIONAL_DIRECTION: "Direction Régionale",
   AGENCY: "Agence",
   POINT_OF_SALE: "Point de vente",
   OTHER: "Autre",

@@ -15,6 +15,8 @@ import {
   createStructure,
   updateStructure,
   changeStructureStatus,
+  listChildren,
+  getAncestors,
 } from "../services/structure.service";
 
 const router: Router = Router();
@@ -86,6 +88,24 @@ router.put(
 
     const structure = await updateStructure(req.user!.id, req.params["id"]!, parsed.data);
     return res.json(structure);
+  })
+);
+
+router.get(
+  "/:id/children",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const children = await listChildren(req.params["id"]!);
+    return res.json(children);
+  })
+);
+
+router.get(
+  "/:id/ancestors",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ancestors = await getAncestors(req.params["id"]!);
+    return res.json(ancestors);
   })
 );
 

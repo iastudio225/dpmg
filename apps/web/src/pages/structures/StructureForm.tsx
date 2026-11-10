@@ -102,9 +102,13 @@ export function StructureForm() {
     navigate("/structures");
   };
 
-  // Un candidat parent ne peut pas être la structure elle-même (le backend
-  // refuse par ailleurs les cycles plus profonds).
-  const parentOptions = allStructures.filter((s) => s.id !== id);
+  // Filtrage dynamique des parents selon le type sélectionné (règles V2).
+  const parentOptions = allStructures.filter((s) => {
+    if (s.id === id) return false;
+    if (type === "REGIONAL_DIRECTION") return s.type === "DIRECTION";
+    if (type === "AGENCY") return s.type === "REGIONAL_DIRECTION";
+    return true;
+  });
 
   const styles = {
     container: css({ maxWidth: "640px", display: "flex", flexDirection: "column", gap: "1.5rem" }),
@@ -248,7 +252,15 @@ export function StructureForm() {
             <button type="button" onClick={handleCancel} style={styles.cancelButton} data-testid="cancel-form-btn">
               Annuler
             </button>
-            <button type="submit" disabled={isLoading} style={styles.submitButton} data-testid="structure-form-submit">
+            <button
+              type="submit"
+              disabled={
+                isLoading ||
+                ((type === "REGIONAL_DIRECTION" || type === "AGENCY") && parentId === "")
+              }
+              style={styles.submitButton}
+              data-testid="structure-form-submit"
+            >
               {isLoading ? "Enregistrement..." : isEdit ? "Enregistrer" : "Créer la structure"}
             </button>
           </div>

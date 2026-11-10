@@ -64,16 +64,20 @@ export function AuthenticatedLayout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [sidebarVisible]);
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, hasAnyRole } = useAuth();
   const navigate = useNavigate();
+
+  const isAdmin = hasAnyRole(["TECHNICAL_ADMIN", "SUPER_ADMIN"]);
 
   const navItems = [
     { path: "/", label: "Tableau de bord", icon: DashboardIcon },
     { path: "/demandes", label: "Demandes", icon: DemandesIcon },
-    { path: "/structures", label: "Structures", icon: StructuresIcon },
-    { path: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon },
-    { path: "/departements", label: "Départements", icon: DepartementsIcon },
-    { path: "/parametres", label: "Paramètres", icon: SettingsIcon },
+    ...(isAdmin ? [
+          { path: "/structures", label: "Structures", icon: StructuresIcon },
+          { path: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon },
+          { path: "/departements", label: "Départements", icon: DepartementsIcon },
+          { path: "/parametres", label: "Paramètres", icon: SettingsIcon },
+        ] : []),
   ];
 
   const handleLogout = async () => {

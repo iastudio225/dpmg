@@ -6,6 +6,7 @@ import type { StructureResponse, StructureType } from "@dpmg/shared";
 
 export const STRUCTURE_TYPE_LABELS: Record<StructureType, string> = {
   DIRECTION: "Direction",
+  REGIONAL_DIRECTION: "Direction Régionale",
   AGENCY: "Agence",
   POINT_OF_SALE: "Point de vente",
   OTHER: "Autre",
