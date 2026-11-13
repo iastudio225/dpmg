@@ -533,6 +533,75 @@ export const consolidationAvisCompletenessSchema = z.object({
 });
 export type ConsolidationAvisCompletenessResponse = z.infer<typeof consolidationAvisCompletenessSchema>;
 
+export const prestataireCreateSchema = z.object({
+  nom: z.string().trim().min(1).max(200),
+  raisonSociale: z.string().trim().max(200).optional().nullable(),
+  telephone: z.string().trim().max(50).optional().nullable(),
+  email: z.string().trim().email().optional().nullable(),
+  adresse: z.string().trim().max(500).optional().nullable(),
+  numeroIdent: z.string().trim().max(100).optional().nullable(),
+  description: z.string().trim().max(2000).optional().nullable(),
+});
+export type PrestataireCreateRequest = z.infer<typeof prestataireCreateSchema>;
+
+export const prestataireUpdateSchema = prestataireCreateSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+export type PrestataireUpdateRequest = z.infer<typeof prestataireUpdateSchema>;
+
+export const devisCreateSchema = z.object({
+  demandeId: z.string().min(1),
+  prestataireId: z.string().min(1),
+  reference: z.string().trim().max(100).optional().nullable(),
+  dateDevis: z.string().datetime().optional().nullable(),
+  dateValidite: z.string().datetime().optional().nullable(),
+  montantHT: z.number().nonnegative().optional().nullable(),
+  montantTVA: z.number().nonnegative().optional().nullable(),
+  montantTTC: z.number().nonnegative().optional().nullable(),
+  devise: z.string().trim().min(1).max(10).optional(),
+  description: z.string().trim().max(2000).optional().nullable(),
+  observations: z.string().trim().max(2000).optional().nullable(),
+});
+export type DevisCreateRequest = z.infer<typeof devisCreateSchema>;
+
+export const devisUpdateSchema = devisCreateSchema.partial().omit({ demandeId: true });
+export type DevisUpdateRequest = z.infer<typeof devisUpdateSchema>;
+
+export const prestataireResponseSchema = z.object({
+  id: z.string(),
+  nom: z.string(),
+  raisonSociale: z.string().nullable(),
+  telephone: z.string().nullable(),
+  email: z.string().nullable(),
+  adresse: z.string().nullable(),
+  numeroIdent: z.string().nullable(),
+  description: z.string().nullable(),
+  isActive: z.boolean(),
+  createdById: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type PrestataireResponse = z.infer<typeof prestataireResponseSchema>;
+
+export const devisResponseSchema = z.object({
+  id: z.string(),
+  reference: z.string().nullable(),
+  demandeId: z.string(),
+  prestataireId: z.string(),
+  dateDevis: z.string().datetime().nullable(),
+  dateValidite: z.string().datetime().nullable(),
+  montantHT: z.number().nullable(),
+  montantTVA: z.number().nullable(),
+  montantTTC: z.number().nullable(),
+  devise: z.string(),
+  description: z.string().nullable(),
+  observations: z.string().nullable(),
+  createdById: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type DevisResponse = z.infer<typeof devisResponseSchema>;
+
 export const demandeRefuseSchema = z.object({
   motif: z.string().trim().min(1, { message: "Le motif du refus est requis" }),
 });

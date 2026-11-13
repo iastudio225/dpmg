@@ -104,6 +104,9 @@ model User {
   adminAuditLogs AdminAuditLog[] @relation("AdminAuditActor")
   consolidations Consolidation[] @relation("ConsolidationAuthor")
   consolidationObservations ConsolidationObservation[]
+  prestatairesCrees Prestataire[] @relation("PrestataireCreatedBy")
+  devisCrees Devis[] @relation("DevisCreatedBy")
+  documentsUploades Document[] @relation("DocumentUploadedBy")
 }
 
 model AdminAuditLog {
@@ -227,6 +230,8 @@ model Demande {
   decisions DemandeDecision[]
   notifications Notification[]
   notificationOutboxes NotificationOutbox[]
+  devis Devis[]
+  documents Document[]
 
   @@index([authorId])
   @@index([departmentId])
@@ -360,4 +365,71 @@ model NotificationOutbox {
   @@index([status, availableAt, createdAt])
   @@index([recipientUserId, createdAt])
   @@index([demandeId])
+}
+
+model Prestataire {
+  id              String   @id @default(cuid())
+  nom             String
+  raisonSociale   String?
+  telephone       String?
+  email           String?
+  adresse         String?
+  numeroIdent     String?
+  description     String?
+  isActive        Boolean  @default(true)
+  createdById     String
+  createdBy       User     @relation("PrestataireCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  devis           Devis[]
+
+  @@index([nom])
+  @@index([createdById])
+}
+
+model Devis {
+  id             String   @id @default(cuid())
+  reference      String?
+  demandeId      String
+  demande        Demande  @relation(fields: [demandeId], references: [id], onDelete: Restrict)
+  prestataireId  String
+  prestataire    Prestataire @relation(fields: [prestataireId], references: [id], onDelete: Restrict)
+  dateDevis      DateTime?
+  dateValidite   DateTime?
+  montantHT      Decimal? @db.Decimal(15,2)
+  montantTVA     Decimal? @db.Decimal(15,2)
+  montantTTC     Decimal? @db.Decimal(15,2)
+  devise         String   @default("XOF")
+  description    String?
+  observations   String?
+  createdById    String
+  createdBy      User     @relation("DevisCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  documents      Document[]
+
+  @@unique([id, demandeId])
+  @@index([demandeId])
+  @@index([prestataireId])
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  nomOriginal   String
+  nomStockage   String
+  mimeType      String
+  taille        Int
+  storageKey    String   @unique
+  categorie     String?
+  demandeId     String
+  demande       Demande  @relation(fields: [demandeId], references: [id], onDelete: Restrict)
+  devisId       String?
+  devis         Devis?   @relation(fields: [devisId, demandeId], references: [id, demandeId], onDelete: Restrict)
+  uploadedById  String
+  uploadedBy    User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([demandeId])
+  @@index([devisId])
 }

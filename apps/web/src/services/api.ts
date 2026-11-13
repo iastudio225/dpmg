@@ -26,6 +26,11 @@ import type {
   DepartmentResponse,
   DepartmentCreateRequest,
   DepartmentUpdateRequest,
+  ConsolidationResponse,
+  ConsolidationCreateRequest,
+  ConsolidationAddDemandesRequest,
+  ConsolidationAvisCompletenessResponse,
+  ConsolidationObservationResponse,
 } from "@dpmg/shared";
 
 const API_BASE = "/api";
@@ -463,4 +468,23 @@ export const databaseAdminApi = {
       "/admin/database/reset-full",
       { method: "POST", body: JSON.stringify({ currentPassword, confirmationText }) }
     ),
+};
+
+export const consolidationsApi = {
+  list: () => fetchApi<ConsolidationResponse[]>("/consolidations"),
+  get: (id: string) => fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}`),
+  create: (payload: ConsolidationCreateRequest) =>
+    fetchApi<ConsolidationResponse>("/consolidations", { method: "POST", body: JSON.stringify(payload) }),
+  addDemandes: (id: string, payload: ConsolidationAddDemandesRequest) =>
+    fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/demandes`, { method: "POST", body: JSON.stringify(payload) }),
+  removeDemande: (id: string, demandeId: string) =>
+    fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/demandes/${encodeURIComponent(demandeId)}`, { method: "DELETE" }),
+  transmit: (id: string) =>
+    fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/transmit`, { method: "POST" }),
+  getAvisCompleteness: (id: string) =>
+    fetchApi<ConsolidationAvisCompletenessResponse>(`/consolidations/${encodeURIComponent(id)}/avis-completeness`),
+  listObservations: (id: string) =>
+    fetchApi<ConsolidationObservationResponse[]>(`/consolidations/${encodeURIComponent(id)}/observations`),
+  addObservation: (id: string, commentaire: string) =>
+    fetchApi<ConsolidationObservationResponse>(`/consolidations/${encodeURIComponent(id)}/observations`, { method: "POST", body: JSON.stringify({ commentaire }) }),
 };

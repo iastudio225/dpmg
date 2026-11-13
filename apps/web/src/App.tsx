@@ -16,6 +16,9 @@ import { DepartementsPage } from "./pages/departements/DepartementsPage";
 import { DepartementForm } from "./pages/departements/DepartementForm";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { ParametresPage } from "./pages/ParametresPage";
+import { DgPage } from "./pages/dg/DgPage";
+import { CpmpPage } from "./pages/cpmp/CpmpPage";
+import { ConsolidationsPage } from "./pages/consolidations/ConsolidationsPage";
 import "./index.css";
 
 function css<T extends React.CSSProperties>(styles: T): T {
@@ -89,6 +92,9 @@ function AppRoutes() {
         <Route path="departements/nouveau" element={<DepartementForm />} />
         <Route path="departements/:id/modifier" element={<DepartementForm />} />
         <Route path="parametres" element={<ParametresPage />} />
+        <Route path="consolidations" element={<ConsolidationsPage />} />
+        <Route path="dg" element={<DgPage />} />
+        <Route path="cpmp" element={<CpmpPage />} />
         <Route path="changer-mot-de-passe" element={<ChangePasswordPage />} />
       </Route>
     </Routes>

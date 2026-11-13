@@ -14,6 +14,8 @@ import usersRouter from "./routes/users";
 import structuresRouter from "./routes/structures";
 import departmentsRouter from "./routes/departments";
 import consolidationsRouter from "./routes/consolidations";
+import prestatairesRouter from "./routes/prestataires";
+import devisRouter from "./routes/devis";
 import databaseAdminRouter from "./routes/database-admin";
 
 const app: Express = express();
@@ -35,6 +37,8 @@ app.use("/api/users", usersRouter);
 app.use("/api/structures", structuresRouter);
 app.use("/api/departments", departmentsRouter);
 app.use("/api/consolidations", consolidationsRouter);
+app.use("/api/prestataires", prestatairesRouter);
+app.use("/api/devis", devisRouter);
 app.use("/api/admin/database", databaseAdminRouter);
 
 app.use(notFoundHandler);
