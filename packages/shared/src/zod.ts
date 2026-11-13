@@ -9,6 +9,10 @@ export const envSchema = z.object({
   SESSION_MAX_AGE: z.coerce.number().int().positive().default(86400000),
   LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
+  /** Répertoire de stockage des justificatifs d'exécution (défaut : <cwd>/uploads). */
+  UPLOAD_DIR: z.string().optional(),
+  /** Taille maximale d'un justificatif téléversé, en Mo. */
+  PROOF_MAX_SIZE_MB: z.coerce.number().int().positive().default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -176,6 +180,22 @@ export const roleTypeSchema = z.enum([
   "SUPER_ADMIN",
 ]);
 export type RoleType = z.infer<typeof roleTypeSchema>;
+
+export const roleTypeLabelFr: Record<RoleType, string> = {
+  EMPLOYEE: "Agent",
+  HIERARCHICAL_MANAGER: "Directeur régional",
+  DELEGATED_REPRESENTATIVE: "Représentant délégué",
+  DEPARTMENT_MANAGER: "Responsable de département",
+  DEPARTMENT_DELEGATE: "Délégué de département",
+  DPMG_MANAGER: "Directeur DPMG",
+  DPMG_DELEGATE: "Délégué DPMG",
+  DFC_CONTROLLER: "Contrôleur financier (DFC)",
+  CPMP_USER: "Agent CPMP",
+  DG_USER: "Directeur général (DG)",
+  EXECUTION_AGENT: "Agent d'exécution",
+  TECHNICAL_ADMIN: "Administrateur technique",
+  SUPER_ADMIN: "Super administrateur",
+};
 
 export const userRoleResponseSchema = z.object({
   /** Identifiant réel de la ligne UserStructureRole (requis pour PUT/DELETE /roles/:roleId). */
@@ -384,7 +404,7 @@ export type DemandeCategory = z.infer<typeof demandeCategorySchema>;
 
 export const DEMANDE_CATEGORY_DEPARTMENT_CODE: Record<DemandeCategory, string> = {
   INFRASTRUCTURE: "INFRA",
-  LOGISTIQUE: "LOGISTIQUE",
+  LOGISTIQUE: "LOGIS",
   MAGASIN: "MAGASIN",
 };
 
@@ -441,6 +461,9 @@ export const demandeResponseSchema = z.object({
   satisfactionProofUrl: z.string().nullable(),
   satisfactionObservations: z.string().nullable(),
   closureReturnReason: z.string().nullable(),
+  departmentAvisMotif: z.string().nullable(),
+  departmentAvisCommentaire: z.string().nullable(),
+  executionStartedAt: z.string().datetime().nullable(),
 });
 
 export type DemandeResponse = z.infer<typeof demandeResponseSchema>;

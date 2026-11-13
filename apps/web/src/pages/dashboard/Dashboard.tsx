@@ -5,26 +5,13 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { demandesApi } from "../../services/api";
 import { STATUS_LABELS, formatDate } from "../demandes/demandeUi";
 import type { DemandeResponse, RoleType, UserStatus, DemandeStatsResponse } from "@dpmg/shared/zod";
+import { roleTypeLabelFr } from "@dpmg/shared/zod";
 
 function css<T extends React.CSSProperties>(styles: T): T {
   return styles;
 }
 
-const ROLE_LABELS: Record<RoleType, string> = {
-  EMPLOYEE: "Employé",
-  HIERARCHICAL_MANAGER: "Manager hiérarchique",
-  DELEGATED_REPRESENTATIVE: "Représentant délégué",
-  DEPARTMENT_MANAGER: "Responsable de département",
-  DEPARTMENT_DELEGATE: "Délégué de département",
-  DPMG_MANAGER: "Responsable DPMG",
-  DPMG_DELEGATE: "Délégué DPMG",
-  DFC_CONTROLLER: "Contrôleur DFC",
-  CPMP_USER: "Utilisateur CPMP",
-  DG_USER: "Utilisateur DG",
-  EXECUTION_AGENT: "Agent d'exécution",
-  TECHNICAL_ADMIN: "Administrateur technique",
-  SUPER_ADMIN: "Super administrateur",
-};
+const ROLE_LABELS = roleTypeLabelFr;
 
 const MANAGER_ROLES: readonly RoleType[] = [
   "DEPARTMENT_MANAGER",

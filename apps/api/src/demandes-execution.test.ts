@@ -111,6 +111,13 @@ function makeDemande(status: DemandeStatus, author = authorId) {
   return prisma.demande.create({ data: { reference: `TST-${RUN}-${Math.random().toString(36).slice(2,6)}`, title: "t", description: "d", status, category: "INFRASTRUCTURE", departmentId: deptId, authorId: author, submittedAt: new Date() } });
 }
 
+/** Prise en charge puis déclaration de satisfaction (la prise en charge est obligatoire). */
+async function satisfy(id: string, token = tokenDept, proofUrl = "https://example.com/proof.pdf") {
+  const started = await api(`/api/demandes/${id}/execution/start`, token, { method: "POST" });
+  assert.equal(started.status, 200);
+  return api(`/api/demandes/${id}/satisfaction`, token, { method: "POST", body: JSON.stringify({ proofUrl }) });
+}
+
 test("exec 9.7 : prise en charge par le département autorisé", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
   const res = await api(`/api/demandes/${d.id}/execution/start`, tokenDept, { method: "POST" });
@@ -139,7 +146,7 @@ test("exec 9.7 : prise en charge refusée depuis un statut incompatible", async 
 
 test("exec 9.7 : déclaration de satisfaction avec justificatif", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  const res = await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  const res = await satisfy(d.id);
   assert.equal(res.status, 200);
   const body = await res.json() as any;
   assert.equal(body.status, "EN_ATTENTE_CONFIRMATION_SATISFACTION");
@@ -151,13 +158,13 @@ test("exec 9.7 : déclaration de satisfaction avec justificatif", async () => {
 
 test("exec 9.7 : déclaration sans justificatif refusée", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  const res = await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "" }) });
+  const res = await satisfy(d.id, tokenDept, "");
   assert.equal(res.status, 400);
 });
 
 test("exec 9.7 : déclaration avec URL invalide refusée", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  const res = await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "not-a-url" }) });
+  const res = await satisfy(d.id, tokenDept, "not-a-url");
   assert.equal(res.status, 400);
 });
 
@@ -170,7 +177,7 @@ test("exec 9.7 : déclaration depuis un statut incompatible refusée", async () 
 test("exec 9.7 : clôture par DPMG habilité", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
   // declare satisfaction first
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   const res = await api(`/api/demandes/${d.id}/close`, tokenDpmg, { method: "POST" });
   assert.equal(res.status, 200);
   const body = await res.json() as any;
@@ -189,14 +196,14 @@ test("exec 9.7 : clôture refusée sans justificatif", async () => {
 
 test("exec 9.7 : clôture refusée par un non-DPMG", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   const res = await api(`/api/demandes/${d.id}/close`, tokenDept, { method: "POST" });
   assert.equal(res.status, 403);
 });
 
 test("exec 9.7 : retour au département avec motif", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   const res = await api(`/api/demandes/${d.id}/execution/return`, tokenDpmg, { method: "POST", body: JSON.stringify({ motif: "preuve insuffisante" }) });
   assert.equal(res.status, 200);
   const body = await res.json() as any;
@@ -207,14 +214,14 @@ test("exec 9.7 : retour au département avec motif", async () => {
 
 test("exec 9.7 : retour sans motif refusé", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   const res = await api(`/api/demandes/${d.id}/execution/return`, tokenDpmg, { method: "POST", body: JSON.stringify({ motif: "" }) });
   assert.equal(res.status, 400);
 });
 
 test("exec 9.7 : historique conservé après retour", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   await api(`/api/demandes/${d.id}/execution/return`, tokenDpmg, { method: "POST", body: JSON.stringify({ motif: "motif" }) });
   const decisions = await prisma.demandeDecision.findMany({ where: { demandeId: d.id } });
   assert.ok(decisions.some((dec) => dec.type === "DEMANDE_EXECUTEE"));
@@ -222,14 +229,14 @@ test("exec 9.7 : historique conservé après retour", async () => {
 
 test("exec 9.7 : DFC ne peut pas clôturer", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  await api(`/api/demandes/${d.id}/satisfaction`, tokenDept, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/proof.pdf" }) });
+  await satisfy(d.id);
   const res = await api(`/api/demandes/${d.id}/close`, tokenDfc, { method: "POST" });
   assert.equal(res.status, 403);
 });
 
 test("exec 9.7 : agent d'exécution peut déclarer la satisfaction", async () => {
   const d = await makeDemande(DemandeStatus.EN_ATTENTE_EXECUTION);
-  const res = await api(`/api/demandes/${d.id}/satisfaction`, tokenExec, { method: "POST", body: JSON.stringify({ proofUrl: "https://example.com/p.pdf" }) });
+  const res = await satisfy(d.id, tokenExec, "https://example.com/p.pdf");
   assert.equal(res.status, 200);
   const body = await res.json() as any;
   assert.equal(body.status, "EN_ATTENTE_CONFIRMATION_SATISFACTION");

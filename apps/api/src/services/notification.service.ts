@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+﻿import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { NotificationType, NotificationPriority, RoleType, UserStatus } from "@prisma/client";
 import { resolveValidatorForDemande } from "./validation.service";
@@ -8,6 +8,7 @@ type Tx = Prisma.TransactionClient;
 
 export type NotificationEventType =
   | "DEMANDE_SOUMISE"
+  | "DEMANDE_EN_ATTENTE_ANALYSE"
   | "DEMANDE_VALIDEE"
   | "DEMANDE_REFUSEE"
   | "DEMANDE_RETOURNEE"
@@ -29,12 +30,15 @@ export interface DemandeForNotification {
   departmentId: string;
   department: { code: string; structureId: string | null };
   isUrgent: boolean;
+  reference?: string;
 }
 
 function notificationTitle(type: string): string {
   switch (type) {
     case "DEMANDE_SOUMISE":
       return "Nouvelle demande à valider";
+    case "DEMANDE_EN_ATTENTE_ANALYSE":
+      return "Nouvelle demande à analyser";
     case "DEMANDE_VALIDEE":
       return "Demande validée";
     case "DEMANDE_REFUSEE":
@@ -125,6 +129,61 @@ export async function resolveDfcRecipients(
 }
 
 /**
+ * Résout les agents d'exécution (et managers départementaux) actifs et habilités
+ * sur un code département. Pas de délégation.
+ */
+export async function resolveExecutionRecipients(
+  tx: Tx,
+  departmentCode: string
+): Promise<string[]> {
+  const now = new Date();
+  const roles = await tx.userStructureRole.findMany({
+    where: {
+      role: { in: [RoleType.DEPARTMENT_MANAGER, RoleType.DEPARTMENT_DELEGATE, RoleType.EXECUTION_AGENT] },
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: UserStatus.ACTIVE },
+    },
+    select: { userId: true, scope: true },
+  });
+
+  const result = new Set<string>();
+  for (const r of roles) {
+    if (r.scope === "*" || r.scope === departmentCode) {
+      result.add(r.userId);
+    }
+  }
+  return [...result];
+}
+
+/**
+ * Résout les utilisateurs CPMP actifs et habilités sur un code département.
+ */
+export async function resolveCpmpRecipients(
+  tx: Tx,
+  departmentCode: string
+): Promise<string[]> {
+  const now = new Date();
+  const roles = await tx.userStructureRole.findMany({
+    where: {
+      role: RoleType.CPMP_USER,
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: UserStatus.ACTIVE },
+    },
+    select: { userId: true, scope: true },
+  });
+
+  const result = new Set<string>();
+  for (const r of roles) {
+    if (r.scope === "*" || r.scope === departmentCode) {
+      result.add(r.userId);
+    }
+  }
+  return [...result];
+}
+
+/**
  * Résout les utilisateurs DPMG actifs et habilités sur un code département.
  * Respecte les délégations DPMG (le délégué remplace le délégant).
  */
@@ -187,6 +246,71 @@ export async function resolveDpmgRecipients(
  * Résout les destinataires d'une notification selon son type et la demande.
  * @param authorStructureId structure de référence de l'auteur (pour la soumission)
  */
+/**
+ * Résout les responsables départementaux actifs et habilités sur un département.
+ * Respecte les affectations actives, les délégations valides et le rattachement structurel.
+ * Le scope "*" n'accorde aucun accès global.
+ */
+export async function resolveDepartmentRecipients(
+  tx: Tx,
+  departmentCode: string,
+  departmentStructureId: string | null
+): Promise<string[]> {
+  const now = new Date();
+  const roles = await tx.userStructureRole.findMany({
+    where: {
+      role: { in: [RoleType.DEPARTMENT_MANAGER, RoleType.DEPARTMENT_DELEGATE] },
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: UserStatus.ACTIVE },
+    },
+    include: {
+      structure: true,
+      delegatedFrom: {
+        include: {
+          structureRoles: {
+            include: { structure: true },
+          },
+        },
+      },
+    },
+  });
+
+  const result = new Set<string>();
+  for (const role of roles) {
+    const ownCovers =
+      (role.scope === departmentCode) ||
+      (role.scope === null && role.structureId === departmentStructureId);
+    if (!ownCovers) continue;
+    if (role.scope === "*") continue;
+
+    if (role.role === RoleType.DEPARTMENT_MANAGER) {
+      result.add(role.userId);
+    } else if (role.role === RoleType.DEPARTMENT_DELEGATE && role.delegatedFromUserId) {
+      const delegator = role.delegatedFrom;
+      if (!delegator || delegator.status !== UserStatus.ACTIVE) continue;
+      const delegatorRole = delegator.structureRoles.find(
+        (sr) =>
+          sr.role === RoleType.DEPARTMENT_MANAGER &&
+          sr.structureId === role.structureId &&
+          sr.startDate <= now &&
+          (sr.endDate === null || sr.endDate >= now)
+      );
+      if (!delegatorRole) continue;
+      const delegatorScopeCovers =
+        delegatorRole.scope === departmentCode ||
+        (delegatorRole.scope === null && delegatorRole.structureId === departmentStructureId);
+      if (!delegatorScopeCovers) continue;
+      // Délégation remplace le déléguant : même périmètre.
+      if (delegatorRole.scope !== role.scope && !(delegatorRole.scope === null && role.scope === null)) {
+        continue;
+      }
+      result.add(role.userId);
+    }
+  }
+  return [...result];
+}
+
 export async function resolveRecipients(
   tx: Tx,
   type: string,
@@ -217,6 +341,16 @@ export async function resolveRecipients(
         const dpmg = await resolveDpmgRecipients(tx, demande.department.code);
         recipients.push(...dpmg);
       }
+      if (type === "CONTROLE_DFC_DISPONIBLE") {
+        const execution = await resolveExecutionRecipients(tx, demande.department.code);
+        recipients.push(...execution);
+      }
+      break;
+    case "DEMANDE_EN_ATTENTE_ANALYSE":
+      {
+        const deptManagers = await resolveDepartmentRecipients(tx, demande.department.code, demande.department.structureId ?? null);
+        recipients.push(...deptManagers);
+      }
       break;
     case "AVIS_DEPARTEMENTAL":
       {
@@ -228,6 +362,8 @@ export async function resolveRecipients(
       {
         const dfc = await resolveDfcRecipients(tx, demande.department.code);
         recipients.push(...dfc);
+        const cpmp = await resolveCpmpRecipients(tx, demande.department.code);
+        recipients.push(...cpmp);
       }
       break;
     case "DEMANDE_EN_ATTENTE_PROLONGEE":
@@ -284,12 +420,17 @@ export async function createNotificationOutboxEntries(
     params.priority ??
     (params.demande.isUrgent ? NotificationPriority.HIGH : NotificationPriority.NORMAL);
 
+  const message =
+    params.type === "DEMANDE_EN_ATTENTE_ANALYSE"
+      ? `La demande ${params.demande.reference ?? ""} est en attente de votre analyse départementale.`.trim()
+      : null;
+
   let created = 0;
   for (const userId of recipients) {
     const eventKey = buildEventKey(params.type, eventSourceId, userId);
     const inserted = await tx.$executeRaw`
       INSERT INTO "NotificationOutbox" (id, "eventKey", "recipientUserId", "demandeId", type, title, message, priority, status, attempts, "availableAt", "createdAt")
-      VALUES (gen_random_uuid()::text, ${eventKey}, ${userId}, ${params.demande.id}, ${params.type}::"NotificationType", ${notificationTitle(params.type)}, NULL, ${priority}::"NotificationPriority", 'PENDING'::"NotificationOutboxStatus", 0, now(), now())
+      VALUES (gen_random_uuid()::text, ${eventKey}, ${userId}, ${params.demande.id}, ${params.type}::"NotificationType", ${notificationTitle(params.type)}, ${message}, ${priority}::"NotificationPriority", 'PENDING'::"NotificationOutboxStatus", 0, now(), now())
       ON CONFLICT ("eventKey") DO NOTHING
     `;
     if (Number(inserted) > 0) created++;

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { usersApi, ApiError } from "../../services/api";
 import type { UserResponse, UserStatus } from "@dpmg/shared";
+import { roleTypeLabelFr } from "@dpmg/shared/zod";
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Actif",
@@ -245,9 +246,9 @@ export function UtilisateursPage() {
             onChange={(e) => setRoleFilter(e.target.value)}
           >
             <option value="">Tous</option>
-            <option value="TECHNICAL_ADMIN">Administrateur technique</option>
-            <option value="DPMG_MANAGER">Responsable DPMG</option>
-            <option value="EXECUTION_AGENT">Agent d'exécution</option>
+            {Object.entries(roleTypeLabelFr).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </select>
         </div>
       </div>

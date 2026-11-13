@@ -50,6 +50,7 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
       ...options.headers,
     },
     credentials: "include",
+    cache: "no-store",
     ...options,
   });
 
@@ -216,6 +217,29 @@ export const demandesApi = {
       }),
     }),
 
+  /**
+   * Déclare la satisfaction avec un fichier justificatif téléversé.
+   * Le fichier est envoyé en corps brut ; son nom passe par `X-File-Name`.
+   */
+  uploadSatisfactionProof: (id: string, file: File, observations?: string) => {
+    const query =
+      observations && observations.trim() !== ""
+        ? `?observations=${encodeURIComponent(observations.trim())}`
+        : "";
+    return fetchApi<DemandeResponse>(
+      `/demandes/${encodeURIComponent(id)}/satisfaction/file${query}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-File-Name": encodeURIComponent(file.name),
+          "X-File-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      }
+    );
+  },
+
   closeDemande: (id: string) =>
     fetchApi<DemandeResponse>(`/demandes/${encodeURIComponent(id)}/close`, {
       method: "POST",
@@ -226,7 +250,25 @@ export const demandesApi = {
       method: "POST",
       body: JSON.stringify({ motif }),
     }),
+
+  listObservations: (id: string) =>
+    fetchApi<DemandeObservationResponse[]>(`/demandes/${encodeURIComponent(id)}/observations`),
+
+  addObservation: (id: string, commentaire: string) =>
+    fetchApi<DemandeObservationResponse>(`/demandes/${encodeURIComponent(id)}/observations`, {
+      method: "POST",
+      body: JSON.stringify({ commentaire }),
+    }),
 };
+
+export interface DemandeObservationResponse {
+  id: string;
+  demandeId: string;
+  authorId: string;
+  type: "OBSERVATION_DG" | "OBSERVATION_CPMP";
+  commentaire: string | null;
+  createdAt: string;
+}
 
 export const usersApi = {
   list: (params?: { search?: string; status?: UserStatus; role?: string; page?: number; limit?: number }) => {
@@ -404,4 +446,21 @@ export const notificationsApi = {
 
 export const healthApi = {
   check: () => fetchApi<{ status: string; timestamp: string; uptime: number }>("/health"),
+};
+export const databaseAdminApi = {
+  backup: () =>
+    fetchApi<{ success: boolean; backupReference: string; createdAt: string; sizeBytes: number }>(
+      "/admin/database/backup",
+      { method: "POST" }
+    ),
+  resetOperational: (currentPassword: string, confirmationText: string) =>
+    fetchApi<{ success: boolean; backupReference: string; deletedCounts: Record<string, number> }>(
+      "/admin/database/reset-operational",
+      { method: "POST", body: JSON.stringify({ currentPassword, confirmationText }) }
+    ),
+  resetFull: (currentPassword: string, confirmationText: string) =>
+    fetchApi<{ success: boolean; backupReference: string; deletedCounts: Record<string, number> }>(
+      "/admin/database/reset-full",
+      { method: "POST", body: JSON.stringify({ currentPassword, confirmationText }) }
+    ),
 };

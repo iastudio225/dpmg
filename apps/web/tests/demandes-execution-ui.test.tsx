@@ -34,10 +34,12 @@ const roleDept = { role: "DEPARTMENT_MANAGER", structureId: "st1", structureName
 const roleExec = { role: "EXECUTION_AGENT", structureId: "st1", structureName: "S", structureCode: "STA", structureType: "OTHER", scope: "INFRA", startDate: "2026-01-01T00:00:00.000Z", endDate: null, delegationNote: null };
 const roleDpmg = { role: "DPMG_MANAGER", structureId: "st1", structureName: "S", structureCode: "STA", structureType: "OTHER", scope: "INFRA", startDate: "2026-01-01T00:00:00.000Z", endDate: null, delegationNote: null };
 const roleEmployee = { role: "EMPLOYEE", structureId: "st1", structureName: "S", structureCode: "STA", structureType: "OTHER", scope: "INFRA", startDate: "2026-01-01T00:00:00.000Z", endDate: null, delegationNote: null };
+const roleCpmp = { role: "CPMP_USER", structureId: "st1", structureName: "S", structureCode: "STA", structureType: "OTHER", scope: "INFRA", startDate: "2026-01-01T00:00:00.000Z", endDate: null, delegationNote: null };
 
 const demandeBase = { id: "d10", reference: "DEM-2026-EX01", title: "Demande exécution", description: "desc", category: "INFRASTRUCTURE", departmentId: "dep1", departmentCode: "INFRA", departmentName: "Département INFRA", authorId: "u1", authorFirstName: "Alice", authorLastName: "Martin", createdAt: "2026-10-01T10:00:00.000Z", updatedAt: "2026-10-02T08:00:00.000Z", submittedAt: "2026-10-02T08:00:00.000Z" };
 
 const demandeExecution = { ...demandeBase, status: "EN_ATTENTE_EXECUTION" };
+const demandeExecutionStarted = { ...demandeExecution, executionStartedAt: "2026-10-02T09:00:00.000Z" };
 const demandeConfirmation = { ...demandeBase, status: "EN_ATTENTE_CONFIRMATION_SATISFACTION", satisfactionProofUrl: "https://example.com/proof.pdf" };
 const demandeCloturee = { ...demandeBase, status: "CLOTUREE" };
 
@@ -94,7 +96,6 @@ afterEach(async () => {
   root = null; container = null;
   routes = []; fetchLog.length = 0; fetchBodies.length = 0;
   meUser = userDept; meRoles = [roleDept];
-  dom.window.prompt = () => null;
 });
 
 function click(element: Element) {
@@ -105,6 +106,32 @@ function click(element: Element) {
 }
 function buttonByText(text: string): HTMLButtonElement | undefined {
   return [...container!.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+}
+function inputByLabel(text: string): HTMLInputElement | HTMLTextAreaElement | undefined {
+  const labels = [...container!.querySelectorAll("label")];
+  const label = labels.find((l) => (l.textContent ?? "").trim() === text);
+  const id = label?.getAttribute("for");
+  if (!id) return undefined;
+  return container!.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | undefined;
+}
+function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  return act(async () => {
+    const proto =
+      element instanceof dom.window.HTMLTextAreaElement
+        ? dom.window.HTMLTextAreaElement.prototype
+        : dom.window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+    setter.call(element, value);
+    element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+function selectFile(element: HTMLInputElement, file: File) {
+  Object.defineProperty(element, "files", { value: [file], configurable: true });
+  return act(async () => {
+    element.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -174,41 +201,74 @@ test("exec UI : les actions DPMG disparaissent hors statut EN_ATTENTE_CONFIRMATI
 // ---------------------------------------------------------------------------
 test("exec UI : la déclaration exige une URL de justificatif non vide", async () => {
   meUser = userDept; meRoles = [roleDept];
-  dom.window.prompt = () => "   ";
-  routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecution }];
+  routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecutionStarted }];
   await renderPage("/demandes/d10");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
   await click(buttonByText("Déclarer l'exécution terminée")!);
   assert.ok(container!.querySelector("[role='alert']"));
   assert.ok((container!.querySelector("[role='alert']")!.textContent ?? "").includes("Le justificatif est requis"));
+  assert.equal(fetchBodies.filter((b) => b.url === "/api/demandes/d10/satisfaction").length, 0);
 });
 
 test("exec UI : URL invalide affiche une erreur", async () => {
   meUser = userDept; meRoles = [roleDept];
-  dom.window.prompt = () => "pas-une-url";
   routes = [
-    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecution },
-    { method: "POST", url: "/api/demandes/d10/satisfaction", status: 400, body: { code: "VALIDATION_ERROR", message: "URL de justificatif invalide", details: { proofUrl: ["Invalid url"] } } },
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecutionStarted },
   ];
   await renderPage("/demandes/d10");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
+  await typeInto(inputByLabel("URL du justificatif (obligatoire)")! as HTMLInputElement, "pas-une-url");
   await click(buttonByText("Déclarer l'exécution terminée")!);
   assert.ok(container!.querySelector("[role='alert']"));
   assert.ok((container!.querySelector("[role='alert']")!.textContent ?? "").includes("URL de justificatif invalide"));
 });
 
+test("exec UI : erreur 400 du backend sur l'URL remonte dans le formulaire", async () => {
+  meUser = userDept; meRoles = [roleDept];
+  routes = [
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecutionStarted },
+    { method: "POST", url: "/api/demandes/d10/satisfaction", status: 400, body: { code: "VALIDATION_ERROR", message: "Données de satisfaction invalides", details: { proofUrl: ["URL de justificatif invalide"] } } },
+  ];
+  await renderPage("/demandes/d10");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
+  await typeInto(inputByLabel("URL du justificatif (obligatoire)")! as HTMLInputElement, "https://example.com/proof.pdf");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
+  assert.ok((container!.textContent ?? "").includes("URL de justificatif invalide"));
+});
+
 test("exec UI : déclaration avec URL valide appelle le backend et met à jour le statut", async () => {
   meUser = userDept; meRoles = [roleDept];
-  const prompts = ["https://example.com/proof.pdf", ""];
-  let idx = 0;
-  dom.window.prompt = () => prompts[idx++] ?? null;
   routes = [
-    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecution },
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecutionStarted },
     { method: "POST", url: "/api/demandes/d10/satisfaction", status: 200, body: { ...demandeExecution, status: "EN_ATTENTE_CONFIRMATION_SATISFACTION" } },
   ];
   await renderPage("/demandes/d10");
   await click(buttonByText("Déclarer l'exécution terminée")!);
+  await typeInto(inputByLabel("URL du justificatif (obligatoire)")! as HTMLInputElement, "https://example.com/proof.pdf");
+  await typeInto(inputByLabel("Observations (optionnel)")! as HTMLTextAreaElement, "Travaux réalisés");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
   const calls = fetchBodies.filter((b) => b.url === "/api/demandes/d10/satisfaction");
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0]!.body, { proofUrl: "https://example.com/proof.pdf" });
+  assert.deepEqual(calls[0]!.body, { proofUrl: "https://example.com/proof.pdf", observations: "Travaux réalisés" });
+  assert.ok((container!.textContent ?? "").includes("En attente de confirmation de satisfaction"));
+});
+
+test("exec UI : déclaration avec fichier téléverse vers l'endpoint dédié", async () => {
+  meUser = userDept; meRoles = [roleDept];
+  routes = [
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecutionStarted },
+    { method: "POST", url: "/api/demandes/d10/satisfaction/file", status: 201, body: { ...demandeExecution, status: "EN_ATTENTE_CONFIRMATION_SATISFACTION", satisfactionProofUrl: "/api/demandes/d10/justificatif" } },
+  ];
+  await renderPage("/demandes/d10");
+  await click(buttonByText("Déclarer l'exécution terminée")!);
+  const fileRadio = container!.querySelector('input[name="satisfaction-mode"][value="file"]')!;
+  await click(fileRadio);
+  const fileInput = container!.querySelector("#proof-file") as HTMLInputElement;
+  const file = new dom.window.File(["contenu"], "rapport.pdf", { type: "application/pdf" });
+  await selectFile(fileInput, file);
+  await click(buttonByText("Déclarer l'exécution terminée")!);
+  const calls = fetchBodies.filter((b) => b.url === "/api/demandes/d10/satisfaction/file");
+  assert.equal(calls.length, 1);
   assert.ok((container!.textContent ?? "").includes("En attente de confirmation de satisfaction"));
 });
 
@@ -217,23 +277,25 @@ test("exec UI : déclaration avec URL valide appelle le backend et met à jour l
 // ---------------------------------------------------------------------------
 test("exec UI : le retour au département exige un motif non vide", async () => {
   meUser = userDpmg; meRoles = [roleDpmg];
-  dom.window.prompt = () => "   ";
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeConfirmation }];
   await renderPage("/demandes/d10");
   await click(buttonByText("Retourner au département")!);
+  await click(buttonByText("Confirmer le retour")!);
   assert.ok(container!.querySelector("[role='alert']"));
   assert.ok((container!.querySelector("[role='alert']")!.textContent ?? "").includes("Le motif du retour est requis"));
+  assert.equal(fetchBodies.filter((b) => b.url === "/api/demandes/d10/execution/return").length, 0);
 });
 
 test("exec UI : le retour appelle le backend avec le motif", async () => {
   meUser = userDpmg; meRoles = [roleDpmg];
-  dom.window.prompt = () => "motif de retour";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeConfirmation },
     { method: "POST", url: "/api/demandes/d10/execution/return", status: 200, body: { ...demandeConfirmation, status: "EN_ATTENTE_EXECUTION" } },
   ];
   await renderPage("/demandes/d10");
   await click(buttonByText("Retourner au département")!);
+  await typeInto(inputByLabel("Motif du retour (obligatoire)")! as HTMLTextAreaElement, "motif de retour");
+  await click(buttonByText("Confirmer le retour")!);
   const calls = fetchBodies.filter((b) => b.url === "/api/demandes/d10/execution/return");
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0]!.body, { motif: "motif de retour" });
@@ -313,6 +375,15 @@ test("exec UI : le justificatif reste visible après clôture", async () => {
 });
 
 // ---------------------------------------------------------------------------
+test("exec UI : un justificatif stocké affiche un libellé de téléchargement", async () => {
+  meUser = userDpmg; meRoles = [roleDpmg];
+  routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: { ...demandeConfirmation, satisfactionProofUrl: "/api/demandes/d10/justificatif" } }];
+  await renderPage("/demandes/d10");
+  const link = container!.querySelector('a[href="/api/demandes/d10/justificatif"]');
+  assert.ok(link, "un lien de téléchargement doit être présent");
+  assert.ok((link!.textContent ?? "").includes("Télécharger le justificatif"));
+});
+
 test("exec UI : les actions DPMG restent présentes sur EN_ATTENTE_CONFIRMATION_SATISFACTION", async () => {
   meUser = userDpmg; meRoles = [roleDpmg];
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeConfirmation }];
@@ -320,10 +391,62 @@ test("exec UI : les actions DPMG restent présentes sur EN_ATTENTE_CONFIRMATION_
   assert.ok(buttonByText("Clôturer la demande"));
   assert.ok(buttonByText("Retourner au département"));
 });
-test("exec UI : le justificatif reste visible apr�s retour � EN_ATTENTE_EXECUTION", async () => {
+test("exec UI : le justificatif reste visible après retour à EN_ATTENTE_EXECUTION", async () => {
   meUser = userDept; meRoles = [roleDept];
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: { ...demandeConfirmation, status: "EN_ATTENTE_EXECUTION" } }];
   await renderPage("/demandes/d10");
   const link = container!.querySelector('a[href="https://example.com/proof.pdf"]');
-  assert.ok(link, "le justificatif doit rester visible apr�s un retour");
+  assert.ok(link, "le justificatif doit rester visible après un retour");
+});
+
+// ---------------------------------------------------------------------------
+// Observations DG / CPMP : formulaire intégré (plus de window.prompt)
+// ---------------------------------------------------------------------------
+test("exec UI : l'observation DG/CPMP exige un commentaire", async () => {
+  meUser = userDpmg; meRoles = [roleCpmp];
+  routes = [
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecution },
+    { method: "GET", url: "/api/demandes/d10/observations", status: 200, body: [] },
+  ];
+  await renderPage("/demandes/d10");
+
+  await click(buttonByText("Ajouter une observation (DG/CPMP)")!);
+  await click(buttonByText("Ajouter l'observation")!);
+
+  const alert = container!.querySelector("[role='alert']");
+  assert.ok(alert, "un message d'erreur doit être affiché");
+  assert.ok((alert!.textContent ?? "").includes("L'observation est requise"));
+  assert.equal(fetchBodies.filter((b) => b.method === "POST").length, 0, "aucun appel API ne doit être effectué");
+});
+
+test("exec UI : l'observation DG/CPMP est envoyée puis affichée", async () => {
+  meUser = userDpmg; meRoles = [roleCpmp];
+  routes = [
+    { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeExecution },
+    { method: "GET", url: "/api/demandes/d10/observations", status: 200, body: [] },
+    {
+      method: "POST",
+      url: "/api/demandes/d10/observations",
+      status: 201,
+      body: {
+        id: "o1",
+        demandeId: "d10",
+        authorId: "u3",
+        type: "OBSERVATION_CPMP",
+        commentaire: "Préciser le besoin",
+        createdAt: "2026-10-03T10:00:00.000Z",
+      },
+    },
+  ];
+  await renderPage("/demandes/d10");
+
+  await click(buttonByText("Ajouter une observation (DG/CPMP)")!);
+  await typeInto(inputByLabel("Observation (obligatoire)")! as HTMLTextAreaElement, "Préciser le besoin");
+  await click(buttonByText("Ajouter l'observation")!);
+
+  const calls = fetchBodies.filter((b) => b.method === "POST" && b.url === "/api/demandes/d10/observations");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]!.body, { commentaire: "Préciser le besoin" });
+  assert.ok((container!.textContent ?? "").includes("Préciser le besoin"));
+  assert.equal(container!.querySelector("[role='dialog']"), null, "le dialogue doit être refermé");
 });

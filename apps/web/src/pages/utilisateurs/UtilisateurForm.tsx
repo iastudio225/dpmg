@@ -8,6 +8,7 @@ import type {
   UserRoleResponse,
   UserStatus,
 } from "@dpmg/shared";
+import { roleTypeLabelFr } from "@dpmg/shared/zod";
 
 function css<T extends React.CSSProperties>(styles: T): T {
   return styles;
@@ -22,19 +23,7 @@ const inputStyles = css({
   background: "var(--color-background)",
 });
 
-const ROLE_LABELS: Record<string, string> = {
-  EMPLOYEE: "Employé",
-  HIERARCHICAL_MANAGER: "Manager hiérarchique",
-  DEPARTMENT_MANAGER: "Manager de département",
-  DPMG_MANAGER: "Responsable DPMG",
-  DPMG_DELEGATE: "Délégué DPMG",
-  DFC_CONTROLLER: "Contrôleur DFC",
-  CPMP_USER: "Utilisateur CPMP",
-  DG_USER: "Utilisateur DG",
-  EXECUTION_AGENT: "Agent d'exécution",
-  TECHNICAL_ADMIN: "Administrateur technique",
-  SUPER_ADMIN: "Super administrateur",
-};
+const ROLE_LABELS = roleTypeLabelFr;
 
 /** Résultat de la recherche du département associé à une structure donnée. */
 type DepartmentLookup = {
@@ -304,13 +293,19 @@ export function UtilisateurForm() {
   };
 
   const roleOptions: { value: RoleType; label: string }[] = [
-    { value: "EMPLOYEE", label: "Employé" },
-    { value: "HIERARCHICAL_MANAGER", label: "Manager hiérarchique" },
-    { value: "DEPARTMENT_MANAGER", label: "Manager de département" },
-    { value: "DPMG_MANAGER", label: "Responsable DPMG" },
-    { value: "EXECUTION_AGENT", label: "Agent d'exécution" },
-    { value: "TECHNICAL_ADMIN", label: "Administrateur technique" },
-    { value: "SUPER_ADMIN", label: "Super administrateur" },
+    { value: "DG_USER", label: roleTypeLabelFr.DG_USER },
+    { value: "DPMG_MANAGER", label: roleTypeLabelFr.DPMG_MANAGER },
+    { value: "TECHNICAL_ADMIN", label: roleTypeLabelFr.TECHNICAL_ADMIN },
+    { value: "SUPER_ADMIN", label: roleTypeLabelFr.SUPER_ADMIN },
+    { value: "HIERARCHICAL_MANAGER", label: roleTypeLabelFr.HIERARCHICAL_MANAGER },
+    { value: "DEPARTMENT_MANAGER", label: roleTypeLabelFr.DEPARTMENT_MANAGER },
+    { value: "DFC_CONTROLLER", label: roleTypeLabelFr.DFC_CONTROLLER },
+    { value: "CPMP_USER", label: roleTypeLabelFr.CPMP_USER },
+    { value: "EMPLOYEE", label: roleTypeLabelFr.EMPLOYEE },
+    { value: "EXECUTION_AGENT", label: roleTypeLabelFr.EXECUTION_AGENT },
+    { value: "DELEGATED_REPRESENTATIVE", label: roleTypeLabelFr.DELEGATED_REPRESENTATIVE },
+    { value: "DEPARTMENT_DELEGATE", label: roleTypeLabelFr.DEPARTMENT_DELEGATE },
+    { value: "DPMG_DELEGATE", label: roleTypeLabelFr.DPMG_DELEGATE },
   ];
 
   const styles = {

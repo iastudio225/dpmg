@@ -972,7 +972,7 @@ test("l'édition retrouve le rôle par son identifiant et non par son index", as
 
   await clickTestId("edit-role-role-second");
   const label = container!.querySelector("label[for='edit-role-scope']")?.textContent ?? "";
-  assert.ok(label.includes("Manager hiérarchique"), "Le rôle édité doit être retrouvé par son id, pas par son index");
+  assert.ok(label.includes("Directeur régional"), "Le rôle édité doit être retrouvé par son id, pas par son index");
 });
 
 test("un rôle sans identifiant empêche la modification et la suppression", async () => {

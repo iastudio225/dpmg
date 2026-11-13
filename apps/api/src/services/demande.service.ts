@@ -8,6 +8,11 @@ import {
 } from "@dpmg/shared/zod";
 import { resolveValidatorForDemande } from "./validation.service";
 import { createNotificationOutboxEntries } from "./notification.service";
+import {
+  deleteProofFile,
+  saveProofFile,
+  type ProofFileInput,
+} from "./proof-storage.service";
 
 const prisma = new PrismaClient();
 
@@ -61,11 +66,15 @@ function toResponse(demande: DemandeWithRelations): DemandeResponse {
     satisfactionProofUrl: demande.satisfactionProofUrl ?? null,
     satisfactionObservations: demande.satisfactionObservations ?? null,
     closureReturnReason: demande.closureReturnReason ?? null,
+    departmentAvisMotif: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.motif ?? null,
+    departmentAvisCommentaire: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.commentaire ?? null,
+    executionStartedAt: demande.executionStartedAt?.toISOString() ?? null,
   });
 }
 
 const includeRelations = {
   department: { select: { code: true, name: true } },
+  decisions: { orderBy: { createdAt: "desc" } },
   author: {
     select: {
       firstName: true,
@@ -96,11 +105,36 @@ export async function resolveReferenceStructureId(
   departmentStructureId: string | null,
   authorId: string
 ): Promise<string> {
+  const now = new Date();
+
+  // Priorité : agence active de l'auteur (si identifiable).
+  const activeAgencyRoles = await prisma.userStructureRole.findMany({
+    where: {
+      userId: authorId,
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      structure: { type: "AGENCY" },
+    },
+    select: { structureId: true },
+  });
+  const agencyStructures = [...new Set(activeAgencyRoles.map((r) => r.structureId).filter(Boolean))];
+
+  if (agencyStructures.length === 1) {
+    return agencyStructures[0]!;
+  }
+  if (agencyStructures.length > 1) {
+    throw new AppError(
+      "STRUCTURE_AMBIGUE",
+      "L'auteur de la demande est rattaché à plusieurs agences actives : structure de référence indéterminée",
+      403
+    );
+  }
+
+  // Repli historique : structure du département, puis rôles actifs de l'auteur.
   if (departmentStructureId) {
     return departmentStructureId;
   }
 
-  const now = new Date();
   const activeRoles = await prisma.userStructureRole.findMany({
     where: {
       userId: authorId,
@@ -208,11 +242,58 @@ export async function createDemande(
  * en réutilisant strictement les mêmes règles que listDemandes.
  * Aucun filtre supplémentaire (statut, département) n'est appliqué ici.
  */
+async function resolveRegionalAgencyAuthorIds(userId: string): Promise<string[]> {
+  const now = new Date();
+  const regionalRoles = await prisma.userStructureRole.findMany({
+    where: {
+      userId,
+      role: RoleType.HIERARCHICAL_MANAGER,
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: UserStatus.ACTIVE },
+      structure: { type: "REGIONAL_DIRECTION" },
+    },
+    select: { structureId: true },
+  });
+
+  const regionalStructureIds = [...new Set(regionalRoles.map((r) => r.structureId).filter(Boolean))] as string[];
+  // Aucune ouverture globale : une seule Direction Régionale active est requise.
+  if (regionalStructureIds.length !== 1) {
+    return [];
+  }
+
+  const agencies = await prisma.structure.findMany({
+    where: {
+      type: "AGENCY",
+      parentId: regionalStructureIds[0],
+      status: true,
+    },
+    select: { id: true },
+  });
+  const agencyIds = agencies.map((a) => a.id);
+  if (agencyIds.length === 0) {
+    return [];
+  }
+
+  const agencyRoles = await prisma.userStructureRole.findMany({
+    where: {
+      structureId: { in: agencyIds },
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: UserStatus.ACTIVE },
+    },
+    select: { userId: true },
+  });
+
+  return [...new Set(agencyRoles.map((r) => r.userId))];
+}
+
 async function buildDemandeVisibilityWhere(
   userId: string,
   managerScopes: string[]
 ): Promise<Prisma.DemandeWhereInput> {
   const analyzableDepartmentIds = await resolveAnalyzableDepartmentIds(userId);
+  const regionalAgencyAuthorIds = await resolveRegionalAgencyAuthorIds(userId);
   const dpmgDecisionDepartmentIds = await resolveDpmgDecisionDepartmentIds(userId);
   const dfcDecisionDepartmentIds = await resolveDfcDecisionDepartmentIds(userId);
   const executionDepartmentIds = await resolveExecutionDepartmentIds(userId);
@@ -228,6 +309,16 @@ async function buildDemandeVisibilityWhere(
             ? [
                 { status: DemandeStatus.EN_ATTENTE_VALIDATION, department: { code: { in: managerScopes } } },
                 { status: DemandeStatus.CLOTUREE, department: { code: { in: managerScopes } } },
+              ]
+            : []),
+          ...(regionalAgencyAuthorIds.length > 0
+            ? [
+                // Un directeur régional suit toutes les demandes de ses agences,
+                // quel que soit leur statut (sauf les brouillons, privés à l'auteur).
+                {
+                  authorId: { in: regionalAgencyAuthorIds },
+                  status: { not: DemandeStatus.BROUILLON },
+                },
               ]
             : []),
           ...(analyzableDepartmentIds.length > 0
@@ -320,6 +411,14 @@ export async function findVisibleDemande(
   const isAuthor = demande.authorId === userId;
   const isManagerView =
     demande.status !== DemandeStatus.BROUILLON && managerScopes.includes(demande.department.code);
+  const analyzableDepartmentIds = await resolveAnalyzableDepartmentIds(userId);
+  const isDepartmentManagerView =
+    demande.status === DemandeStatus.EN_ATTENTE_ANALYSE &&
+    analyzableDepartmentIds.includes(demande.departmentId);
+  const regionalAgencyAuthorIds = await resolveRegionalAgencyAuthorIds(userId);
+  const isRegionalManagerView =
+    demande.status !== DemandeStatus.BROUILLON &&
+    regionalAgencyAuthorIds.includes(demande.authorId);
   // Un décideur DPMG habilité accède à la fiche des demandes à lui soumettre.
   const isDpmgDecisionView =
     (demande.status === DemandeStatus.EN_ATTENTE_DECISION ||
@@ -355,7 +454,7 @@ export async function findVisibleDemande(
       demande.status === DemandeStatus.CLOTUREE) &&
     (await resolveExecutionDepartmentIds(userId)).includes(demande.departmentId);
 
-  if (!isAuthor && !isManagerView && !isDpmgDecisionView && !isDfcDecisionView && !isExecutionView && !isDgView && !isCpmpView) return null;
+  if (!isAuthor && !isManagerView && !isDepartmentManagerView && !isRegionalManagerView && !isDpmgDecisionView && !isDfcDecisionView && !isExecutionView && !isDgView && !isCpmpView) return null;
 
   return toResponse(demande);
 }
@@ -592,6 +691,18 @@ export async function approveDemande(id: string, userId: string): Promise<Demand
         },
         eventSourceId: id,
       });
+      await createNotificationOutboxEntries(tx, {
+        type: "DEMANDE_EN_ATTENTE_ANALYSE",
+        demande: {
+          id: existing.id,
+          reference: existing.reference,
+          authorId: existing.authorId,
+          departmentId: existing.departmentId,
+          department: { code: existing.department.code, structureId: existing.department.structureId ?? null },
+          isUrgent: existing.isUrgent,
+        },
+        eventSourceId: id,
+      });
       return result;
     });
   } catch (error: any) {
@@ -747,7 +858,7 @@ function targetsDepartment(
   department: { code: string; structureId: string | null }
 ): boolean {
   // `scope: "*"` n'accorde aucun périmètre (cf. managerScopesFromRequest).
-  if (!target.scope || target.scope === "*") return false;
+  if (target.scope === "*") return false;
   if (target.scope === department.code) return true;
   // Rattachement structurel : Department.structureId -> Structure.id
   if (department.structureId && target.structureId === department.structureId) return true;
@@ -1075,7 +1186,12 @@ export async function avisDemande(
         },
         eventSourceId: id,
       });
-      return result;
+      // Recharger pour inclure la nouvelle décision dans la réponse
+      const updated = await tx.demande.findUnique({
+        where: { id },
+        include: includeRelations,
+      });
+      return updated!;
     });
   } catch (error: any) {
     // P2025 : le statut attendu EN_ATTENTE_ANALYSE n'est plus valide (demande déjà
@@ -1654,8 +1770,9 @@ export async function startExecution(id: string, userId: string): Promise<Demand
 export async function declareSatisfaction(
   id: string,
   userId: string,
-  proofUrl: string,
-  observations?: string | null
+  proofUrl: string | null,
+  observations?: string | null,
+  file?: ProofFileInput
 ): Promise<DemandeResponse> {
   const existing = await prisma.demande.findUnique({
     where: { id },
@@ -1665,13 +1782,33 @@ export async function declareSatisfaction(
   if (existing.status !== DemandeStatus.EN_ATTENTE_EXECUTION) {
     throw new AppError("DEMANDE_NOT_EXECUTION", "Seule une demande en attente d'exécution peut être déclarée satisfaite", 403);
   }
-  if (!proofUrl || proofUrl.trim() === "") {
-    throw new AppError("VALIDATION_ERROR", "Le justificatif est requis", 400);
+  if (!existing.executionStartedAt) {
+    throw new AppError("DEMANDE_NOT_STARTED", "La prise en charge de l'exécution est requise avant la déclaration de satisfaction", 403);
   }
-  try { new URL(proofUrl.trim()); } catch {
-    throw new AppError("VALIDATION_ERROR", "URL de justificatif invalide", 400);
+
+  // Justificatif : soit un fichier téléversé, soit une URL externe.
+  let proofLocation = proofUrl?.trim() ?? "";
+  if (!file) {
+    if (proofLocation === "") {
+      throw new AppError("VALIDATION_ERROR", "Le justificatif est requis", 400);
+    }
+    try {
+      new URL(proofLocation);
+    } catch {
+      throw new AppError("VALIDATION_ERROR", "URL de justificatif invalide", 400);
+    }
   }
+
   await assertDepartmentExecutionAuthorizer(userId, existing.department.code);
+
+  // L'écriture du fichier précède la transaction : on la supprime si la
+  // transition échoue pour ne pas laisser de justificatif orphelin.
+  let fileStored = false;
+  if (file) {
+    const stored = await saveProofFile(id, file);
+    proofLocation = stored.url;
+    fileStored = true;
+  }
 
   let updatedDemande: DemandeWithRelations;
   try {
@@ -1680,10 +1817,9 @@ export async function declareSatisfaction(
         where: { id, authorId: existing.authorId, status: DemandeStatus.EN_ATTENTE_EXECUTION },
         data: {
           status: DemandeStatus.EN_ATTENTE_CONFIRMATION_SATISFACTION,
-          satisfactionProofUrl: proofUrl.trim(),
+          satisfactionProofUrl: proofLocation,
           satisfactionObservations: observations?.trim() ? observations.trim() : null,
-          satisfiedAt: new Date(),
-          satisfiedBy: userId,
+          satisfiedBy: null,
         },
         include: includeRelations,
       });
@@ -1704,7 +1840,55 @@ export async function declareSatisfaction(
       return result;
     });
   } catch (error: any) {
+    if (fileStored) {
+      await deleteProofFile(id).catch(() => {
+        /* nettoyage best-effort */
+      });
+    }
     if (error.code === "P2025") throw new AppError("DEMANDE_NOT_EXECUTION", "La demande n'est plus en attente d'exécution", 403);
+    if (error.code === "P2034" || error.code === "P2031") throw new AppError("CONCURRENT_MODIFICATION", "Cette demande a été modifiée par un autre utilisateur", 409);
+    throw error;
+  }
+  return toResponse(updatedDemande);
+}
+
+export async function confirmSatisfaction(id: string, userId: string): Promise<DemandeResponse> {
+  const existing = await prisma.demande.findUnique({
+    where: { id },
+    include: { department: { select: { code: true, structureId: true } } },
+  });
+  if (!existing) throw new AppError("NOT_FOUND", "Demande non trouvée", 404);
+  if (existing.authorId !== userId) {
+    throw new AppError("FORBIDDEN", "Seul le demandeur peut confirmer la satisfaction", 403);
+  }
+  if (existing.status !== DemandeStatus.EN_ATTENTE_CONFIRMATION_SATISFACTION) {
+    throw new AppError("DEMANDE_NOT_CONFIRMATION", "La demande n'est pas en attente de confirmation de satisfaction", 403);
+  }
+  if (existing.satisfiedBy) {
+    throw new AppError("DEMANDE_ALREADY_CONFIRMED", "La satisfaction a déjà été confirmée", 409);
+  }
+  if (!existing.satisfactionProofUrl) {
+    throw new AppError("VALIDATION_ERROR", "Le justificatif est requis pour confirmer la satisfaction", 400);
+  }
+  let updatedDemande: DemandeWithRelations;
+  try {
+    updatedDemande = await prisma.$transaction(async (tx) => {
+      const result = await tx.demande.update({
+        where: { id, authorId: existing.authorId, status: DemandeStatus.EN_ATTENTE_CONFIRMATION_SATISFACTION, satisfiedBy: null },
+        data: {
+          status: DemandeStatus.EN_ATTENTE_CONFIRMATION_SATISFACTION,
+          satisfiedAt: new Date(),
+          satisfiedBy: userId,
+        },
+        include: includeRelations,
+      });
+      await tx.demandeDecision.create({
+        data: { demandeId: id, actorId: userId, type: "DEMANDE_EXECUTEE", motif: null, commentaire: existing.satisfactionObservations },
+      });
+      return result;
+    });
+  } catch (error: any) {
+    if (error.code === "P2025") throw new AppError("DEMANDE_NOT_VALIDATION", "La demande n'est plus en attente de validation", 403);
     if (error.code === "P2034" || error.code === "P2031") throw new AppError("CONCURRENT_MODIFICATION", "Cette demande a été modifiée par un autre utilisateur", 409);
     throw error;
   }
@@ -1722,6 +1906,9 @@ export async function closeDemande(id: string, userId: string): Promise<DemandeR
   }
   if (!existing.satisfactionProofUrl) {
     throw new AppError("VALIDATION_ERROR", "Le justificatif est requis pour clôturer", 400);
+  }
+  if (!existing.satisfiedBy) {
+    throw new AppError("DEMANDE_NOT_CONFIRMED", "La satisfaction doit être confirmée par le demandeur avant clôture", 403);
   }
   await assertDpmgDecisionAuthorizer(userId, existing.department.code);
 

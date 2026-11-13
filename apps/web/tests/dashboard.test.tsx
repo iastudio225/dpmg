@@ -403,10 +403,10 @@ test("affiche les habilitations avec libellés français et périmètre", async 
   const habilitations = container!.querySelector("[data-testid='habilitations']");
   assert.ok(habilitations);
   const text = habilitations!.textContent ?? "";
-  assert.ok(text.includes("Responsable DPMG"));
+  assert.ok(text.includes("Directeur DPMG"));
   assert.ok(text.includes("Direction DPMG"));
   assert.ok(text.includes("Périmètre : INFRA"));
-  assert.ok(text.includes("Employé"));
+  assert.ok(text.includes("Agent"));
   assert.ok(text.includes("Périmètre : —"));
 });
 

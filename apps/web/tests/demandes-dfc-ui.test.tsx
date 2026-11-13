@@ -218,7 +218,6 @@ afterEach(async () => {
   fetchBodies.length = 0;
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
 });
 
 function click(element: Element) {
@@ -230,6 +229,27 @@ function click(element: Element) {
 
 function buttonByText(text: string): HTMLButtonElement | undefined {
   return [...container!.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+}
+
+function inputByLabel(text: string): HTMLInputElement | HTMLTextAreaElement | undefined {
+  const labels = [...container!.querySelectorAll("label")];
+  const label = labels.find((l) => (l.textContent ?? "").trim() === text);
+  const id = label?.getAttribute("for");
+  if (!id) return undefined;
+  return container!.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | undefined;
+}
+
+function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  return act(async () => {
+    const proto =
+      element instanceof dom.window.HTMLTextAreaElement
+        ? dom.window.HTMLTextAreaElement.prototype
+        : dom.window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+    setter.call(element, value);
+    element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 function callsFor(suffix: string): FetchBody[] {
@@ -295,7 +315,6 @@ test("DFC UI : un périmètre \"*\" seul, sans rôle DFC, ne donne aucune action
 test("DFC UI : financement disponible appelle le bon endpoint et met à jour le statut", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -308,6 +327,7 @@ test("DFC UI : financement disponible appelle le bon endpoint et met à jour le 
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement disponible")!);
+  await click(buttonByText("Confirmer le financement disponible")!);
 
   const calls = callsFor("control");
   assert.equal(calls.length, 1);
@@ -323,7 +343,6 @@ test("DFC UI : financement disponible appelle le bon endpoint et met à jour le 
 test("DFC UI : financement indisponible appelle le bon endpoint et conserve le statut", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -336,6 +355,7 @@ test("DFC UI : financement indisponible appelle le bon endpoint et conserve le s
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement indisponible")!);
+  await click(buttonByText("Confirmer le financement indisponible")!);
 
   const calls = callsFor("control");
   assert.equal(calls.length, 1);
@@ -349,7 +369,6 @@ test("DFC UI : financement indisponible appelle le bon endpoint et conserve le s
 test("DFC UI : le motif est envoyé lorsqu'il est renseigné", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => "Fonds insuffisants";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -362,6 +381,8 @@ test("DFC UI : le motif est envoyé lorsqu'il est renseigné", async () => {
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement indisponible")!);
+  await typeInto(inputByLabel("Motif / commentaire (optionnel)")! as HTMLTextAreaElement, "Fonds insuffisants");
+  await click(buttonByText("Confirmer le financement indisponible")!);
 
   const calls = callsFor("control");
   assert.equal(calls.length, 1);
@@ -371,7 +392,6 @@ test("DFC UI : le motif est envoyé lorsqu'il est renseigné", async () => {
 test("DFC UI : aucun motif n'est envoyé lorsqu'il est vide", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => "   ";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -384,6 +404,8 @@ test("DFC UI : aucun motif n'est envoyé lorsqu'il est vide", async () => {
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement indisponible")!);
+  await typeInto(inputByLabel("Motif / commentaire (optionnel)")! as HTMLTextAreaElement, "   ");
+  await click(buttonByText("Confirmer le financement indisponible")!);
 
   const calls = callsFor("control");
   assert.equal(calls.length, 1);
@@ -396,7 +418,6 @@ test("DFC UI : aucun motif n'est envoyé lorsqu'il est vide", async () => {
 test("DFC UI : une erreur 403 est affichée sans modifier le statut", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -409,6 +430,7 @@ test("DFC UI : une erreur 403 est affichée sans modifier le statut", async () =
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement disponible")!);
+  await click(buttonByText("Confirmer le financement disponible")!);
 
   const alert = container!.querySelector("[role='alert']");
   assert.ok(alert, "un message d'erreur doit être affiché");
@@ -420,7 +442,6 @@ test("DFC UI : une erreur 403 est affichée sans modifier le statut", async () =
 test("DFC UI : une erreur serveur ne provoque pas de fausse confirmation", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -433,6 +454,7 @@ test("DFC UI : une erreur serveur ne provoque pas de fausse confirmation", async
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Financement disponible")!);
+  await click(buttonByText("Confirmer le financement disponible")!);
 
   const alert = container!.querySelector("[role='alert']");
   assert.ok(alert, "un message d'erreur doit être affiché");
@@ -446,7 +468,6 @@ test("DFC UI : une erreur serveur ne provoque pas de fausse confirmation", async
 test("DFC UI : un double clic ne déclenche qu'un seul appel API", async () => {
   meUser = userDfc;
   meRoles = [roleDfc];
-  dom.window.prompt = () => null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeFinance },
     {
@@ -458,10 +479,11 @@ test("DFC UI : un double clic ne déclenche qu'un seul appel API", async () => {
   ];
   await renderPage("/demandes/d10");
 
-  const btn = buttonByText("Financement disponible")!;
+  await click(buttonByText("Financement disponible")!);
+  const confirm = buttonByText("Confirmer le financement disponible")!;
   await act(async () => {
-    btn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
-    btn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    confirm.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    confirm.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 

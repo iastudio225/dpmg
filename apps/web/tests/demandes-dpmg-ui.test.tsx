@@ -219,7 +219,6 @@ afterEach(async () => {
   fetchBodies.length = 0;
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  dom.window.prompt = () => null;
 });
 
 function click(element: Element) {
@@ -231,6 +230,27 @@ function click(element: Element) {
 
 function buttonByText(text: string): HTMLButtonElement | undefined {
   return [...container!.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+}
+
+function inputByLabel(text: string): HTMLInputElement | HTMLTextAreaElement | undefined {
+  const labels = [...container!.querySelectorAll("label")];
+  const label = labels.find((l) => (l.textContent ?? "").trim() === text);
+  const id = label?.getAttribute("for");
+  if (!id) return undefined;
+  return container!.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | undefined;
+}
+
+function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  return act(async () => {
+    const proto =
+      element instanceof dom.window.HTMLTextAreaElement
+        ? dom.window.HTMLTextAreaElement.prototype
+        : dom.window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+    setter.call(element, value);
+    element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 function callsFor(suffix: string): FetchBody[] {
@@ -342,11 +362,11 @@ test("DPMG UI : l'approbation appelle le bon endpoint et met à jour l'interface
 test("DPMG UI : le refus exige un motif non vide", async () => {
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  dom.window.prompt = () => "   ";
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeDecision }];
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Refuser (DPMG)")!);
+  await click(buttonByText("Confirmer le refus")!);
 
   assert.equal(callsFor("refuse").length, 0, "aucun appel API ne doit être effectué");
   const alert = container!.querySelector("[role='alert']");
@@ -357,7 +377,6 @@ test("DPMG UI : le refus exige un motif non vide", async () => {
 test("DPMG UI : le refus appelle le bon endpoint avec le bon corps", async () => {
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  dom.window.prompt = () => "Hors stratégie";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeDecision },
     {
@@ -370,6 +389,8 @@ test("DPMG UI : le refus appelle le bon endpoint avec le bon corps", async () =>
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Refuser (DPMG)")!);
+  await typeInto(inputByLabel("Motif du refus (obligatoire)")! as HTMLTextAreaElement, "Hors stratégie");
+  await click(buttonByText("Confirmer le refus")!);
 
   const calls = callsFor("refuse");
   assert.equal(calls.length, 1);
@@ -385,11 +406,11 @@ test("DPMG UI : le refus appelle le bon endpoint avec le bon corps", async () =>
 test("DPMG UI : le retour exige un motif non vide", async () => {
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  dom.window.prompt = () => null;
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeDecision }];
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Retourner pour correction (DPMG)")!);
+  await click(buttonByText("Confirmer le retour")!);
 
   assert.equal(callsFor("return").length, 0, "aucun appel API ne doit être effectué");
   const alert = container!.querySelector("[role='alert']");
@@ -400,9 +421,6 @@ test("DPMG UI : le retour exige un motif non vide", async () => {
 test("DPMG UI : le retour appelle le bon endpoint avec motif et commentaire", async () => {
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  const prompts = ["Préciser le besoin", "Commentaire complémentaire"];
-  let idx = 0;
-  dom.window.prompt = () => prompts[idx++] ?? null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeDecision },
     {
@@ -415,6 +433,9 @@ test("DPMG UI : le retour appelle le bon endpoint avec motif et commentaire", as
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Retourner pour correction (DPMG)")!);
+  await typeInto(inputByLabel("Motif du retour (obligatoire)")! as HTMLTextAreaElement, "Préciser le besoin");
+  await typeInto(inputByLabel("Commentaire (optionnel)")! as HTMLTextAreaElement, "Commentaire complémentaire");
+  await click(buttonByText("Confirmer le retour")!);
 
   const calls = callsFor("return");
   assert.equal(calls.length, 1);
@@ -433,7 +454,6 @@ test("DPMG UI : le retour appelle le bon endpoint avec motif et commentaire", as
 test("DPMG UI : une erreur 403 est affichée sans modifier le statut", async () => {
   meUser = userDpmg;
   meRoles = [roleDpmg];
-  dom.window.prompt = () => "Motif";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeDecision },
     {
@@ -446,6 +466,8 @@ test("DPMG UI : une erreur 403 est affichée sans modifier le statut", async () 
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Refuser (DPMG)")!);
+  await typeInto(inputByLabel("Motif du refus (obligatoire)")! as HTMLTextAreaElement, "Motif");
+  await click(buttonByText("Confirmer le refus")!);
 
   const alert = container!.querySelector("[role='alert']");
   assert.ok(alert, "un message d'erreur doit être affiché");

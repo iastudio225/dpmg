@@ -210,7 +210,6 @@ afterEach(async () => {
   fetchBodies.length = 0;
   meUser = userValidator;
   meRoles = [roleHierarchical];
-  dom.window.prompt = () => null;
 });
 
 function click(element: Element) {
@@ -222,6 +221,27 @@ function click(element: Element) {
 
 function buttonByText(text: string): HTMLButtonElement | undefined {
   return [...container!.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+}
+
+function inputByLabel(text: string): HTMLInputElement | HTMLTextAreaElement | undefined {
+  const labels = [...container!.querySelectorAll("label")];
+  const label = labels.find((l) => (l.textContent ?? "").trim() === text);
+  const id = label?.getAttribute("for");
+  if (!id) return undefined;
+  return container!.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | undefined;
+}
+
+function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  return act(async () => {
+    const proto =
+      element instanceof dom.window.HTMLTextAreaElement
+        ? dom.window.HTMLTextAreaElement.prototype
+        : dom.window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+    setter.call(element, value);
+    element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 function callsFor(suffix: string): FetchBody[] {
@@ -326,7 +346,6 @@ test("validation UI : les actions disparaissent hors statut EN_ATTENTE_VALIDATIO
 test("validation UI : le refus demande un motif et appelle le backend", async () => {
   meUser = userValidator;
   meRoles = [roleHierarchical];
-  dom.window.prompt = () => "Motif de refus";
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeValidation },
     { method: "POST", url: "/api/demandes/d10/refuse", status: 200, body: { ...demandeValidation, status: "REFUSEE" } },
@@ -334,6 +353,8 @@ test("validation UI : le refus demande un motif et appelle le backend", async ()
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Refuser")!);
+  await typeInto(inputByLabel("Motif du refus (obligatoire)")! as HTMLTextAreaElement, "Motif de refus");
+  await click(buttonByText("Confirmer le refus")!);
 
   const calls = callsFor("refuse");
   assert.equal(calls.length, 1, "un appel refuse doit être effectué");
@@ -343,9 +364,6 @@ test("validation UI : le refus demande un motif et appelle le backend", async ()
 test("validation UI : le retour demande un motif ou un commentaire et appelle le backend", async () => {
   meUser = userValidator;
   meRoles = [roleHierarchical];
-  const prompts = ["Motif de retour", "Commentaire de retour"];
-  let idx = 0;
-  dom.window.prompt = () => prompts[idx++] ?? null;
   routes = [
     { method: "GET", url: "/api/demandes/d10", status: 200, body: demandeValidation },
     { method: "POST", url: "/api/demandes/d10/return", status: 200, body: { ...demandeValidation, status: "RETOURNEE" } },
@@ -353,6 +371,9 @@ test("validation UI : le retour demande un motif ou un commentaire et appelle le
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Retourner pour correction")!);
+  await typeInto(inputByLabel("Motif du retour (optionnel)")! as HTMLTextAreaElement, "Motif de retour");
+  await typeInto(inputByLabel("Commentaire de retour (optionnel)")! as HTMLTextAreaElement, "Commentaire de retour");
+  await click(buttonByText("Confirmer le retour")!);
 
   const calls = callsFor("return");
   assert.equal(calls.length, 1, "un appel return doit être effectué");
@@ -362,16 +383,30 @@ test("validation UI : le retour demande un motif ou un commentaire et appelle le
 test("validation UI : le refus est annulé si le motif est vide", async () => {
   meUser = userValidator;
   meRoles = [roleHierarchical];
-  dom.window.prompt = () => "   ";
   routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeValidation }];
   await renderPage("/demandes/d10");
 
   await click(buttonByText("Refuser")!);
+  await click(buttonByText("Confirmer le refus")!);
 
   assert.equal(callsFor("refuse").length, 0, "aucun appel API ne doit être effectué");
   const alert = container!.querySelector("[role='alert']");
   assert.ok(alert, "un message d'erreur doit être affiché");
   assert.ok((alert!.textContent ?? "").includes("Le motif du refus est requis"));
+});
+
+test("validation UI : le refus est annulé et le dialogue se ferme", async () => {
+  meUser = userValidator;
+  meRoles = [roleHierarchical];
+  routes = [{ method: "GET", url: "/api/demandes/d10", status: 200, body: demandeValidation }];
+  await renderPage("/demandes/d10");
+
+  await click(buttonByText("Refuser")!);
+  assert.ok(container!.querySelector("[role='dialog']"), "le dialogue doit être ouvert");
+  await click(buttonByText("Annuler")!);
+
+  assert.equal(container!.querySelector("[role='dialog']"), null, "le dialogue doit être fermé");
+  assert.equal(callsFor("refuse").length, 0, "aucun appel API ne doit être effectué");
 });
 
 test("validation UI : l'approbation appelle le backend et met à jour le statut", async () => {

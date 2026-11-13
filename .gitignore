@@ -38,3 +38,7 @@ coverage
 
 # Vite
 apps/web/dist
+
+# Justificatifs d'exécution téléversés (stockage local de l'API)
+apps/api/uploads
+uploads

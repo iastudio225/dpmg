@@ -42,6 +42,9 @@ interface DemandeRow {
   satisfactionProofUrl: string | null;
   satisfactionObservations: string | null;
   closureReturnReason: string | null;
+  departmentAvisMotif?: string | null;
+  departmentAvisCommentaire?: string | null;
+  executionStartedAt?: Date | null;
   department: { code: string; name: string };
   author: { firstName: string; lastName: string };
 }
@@ -121,6 +124,9 @@ function toDemandeResponse(row: DemandeRow): DemandeResponse {
     satisfactionProofUrl: row.satisfactionProofUrl ?? null,
     satisfactionObservations: row.satisfactionObservations ?? null,
     closureReturnReason: row.closureReturnReason ?? null,
+    departmentAvisMotif: row.departmentAvisMotif ?? null,
+    departmentAvisCommentaire: row.departmentAvisCommentaire ?? null,
+    executionStartedAt: row.executionStartedAt?.toISOString() ?? null,
   });
 }
 

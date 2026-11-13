@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, raw } from "express";
 import { requireAuth } from "../middleware/auth";
 import { asyncHandler } from "../middleware/errorHandler";
 import {
@@ -22,6 +22,7 @@ import {
   controlDfcDemande,
   startExecution,
   declareSatisfaction,
+  confirmSatisfaction,
   closeDemande,
   returnDemandeForExecution,
   addObservation,
@@ -39,6 +40,7 @@ import {
   returnForExecutionSchema,
   observationBodySchema,
 } from "@dpmg/shared/zod";
+import { getProofFile, maxProofSizeBytes } from "../services/proof-storage.service";
 
 const router: Router = Router();
 
@@ -356,6 +358,99 @@ router.post(
       parsed.data.proofUrl,
       parsed.data.observations
     );
+    return res.json(demande);
+  })
+);
+
+/**
+ * Déclaration de satisfaction avec téléversement direct du justificatif.
+ *
+ * Le corps de la requête est le fichier brut (Content-Type du fichier).
+ * Le nom d'origine est transmis via l'en-tête `X-File-Name` (URL-encodé) et les
+ * observations via le paramètre de requête `observations`.
+ */
+router.post(
+  "/:id/satisfaction/file",
+  requireAuth,
+  raw({ type: () => true, limit: maxProofSizeBytes() + 1024 * 1024 }),
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({
+        code: "VALIDATION_ERROR",
+        message: "Le justificatif est requis",
+        details: { proofFile: ["Aucun fichier reçu"] },
+      } satisfies ApiError);
+    }
+
+    const rawName = req.header("x-file-name") ?? "justificatif";
+    let originalName = rawName;
+    try {
+      originalName = decodeURIComponent(rawName);
+    } catch {
+      /* en-tête non encodé : on conserve la valeur brute */
+    }
+
+    const observations =
+      typeof req.query["observations"] === "string" ? req.query["observations"] : undefined;
+
+    const demande = await declareSatisfaction(
+      req.params["id"]!,
+      req.user!.id,
+      null,
+      observations,
+      {
+        buffer: req.body,
+        originalName,
+        mimeType: req.header("x-file-type") ?? req.header("content-type") ?? null,
+      }
+    );
+    return res.status(201).json(demande);
+  })
+);
+
+/**
+ * Téléchargement du justificatif stocké côté API.
+ * Vérifie la visibilité de la demande avant de servir le fichier.
+ */
+router.get(
+  "/:id/justificatif",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const visible = await findVisibleDemande(
+      req.params["id"]!,
+      req.user!.id,
+      managerScopesFromRequest(req)
+    );
+    if (!visible) {
+      return res.status(404).json({
+        code: "NOT_FOUND",
+        message: "Demande non trouvée",
+      } satisfies ApiError);
+    }
+
+    const file = await getProofFile(req.params["id"]!);
+    if (!file) {
+      return res.status(404).json({
+        code: "NOT_FOUND",
+        message: "Aucun justificatif n'est associé à cette demande",
+      } satisfies ApiError);
+    }
+
+    res.setHeader("Content-Type", file.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.sendFile(file.path);
+  })
+);
+
+router.post(
+  "/:id/satisfaction/confirm",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const demande = await confirmSatisfaction(req.params["id"]!, req.user!.id);
     return res.json(demande);
   })
 );

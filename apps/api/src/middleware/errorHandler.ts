@@ -70,6 +70,16 @@ export function errorHandler(
     } satisfies ApiError);
   }
 
+  // Body parser / televersement : payload trop volumineux.
+  const httpStatus = (err as { status?: number; statusCode?: number }).status
+    ?? (err as { statusCode?: number }).statusCode;
+  if (httpStatus === 413) {
+    return res.status(413).json({
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Le fichier envoyé est trop volumineux",
+    } satisfies ApiError);
+  }
+
   logServerError("Unhandled error", err);
   return res.status(500).json({
     code: "INTERNAL_ERROR",

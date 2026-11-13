@@ -57,10 +57,17 @@ let structVisA = "";
 let structVisB = "";
 let deptVisA = "";
 let deptVisB = "";
+let structRegion = "";
+let structAgence = "";
+let deptAgence = "";
 
-async function createStructure(code: string, parentId?: string): Promise<string> {
+async function createStructure(
+  code: string,
+  parentId?: string,
+  type: StructureType = StructureType.OTHER
+): Promise<string> {
   const structure = await prisma.structure.create({
-    data: { code, name: `Structure ${code}`, type: StructureType.OTHER, parentId },
+    data: { code, name: `Structure ${code}`, type, parentId },
   });
   createdStructureCodes.push(code);
   return structure.id;
@@ -251,6 +258,38 @@ before(async () => {
   demandes["analyseA5"] = await createDemandeRow(`TST-${RUN}-CA`, users["employeA"]!, DemandeStatus.EN_ATTENTE_ANALYSE, deptVisA);
   demandes["analyseA6"] = await createDemandeRow(`TST-${RUN}-CB`, users["employeA"]!, DemandeStatus.EN_ATTENTE_ANALYSE, deptVisA);
 
+  // --- Direction régionale et agence rattachée (visibilité du directeur régional) ---
+  structRegion = await createStructure(`TST-${RUN}-DCR`, undefined, StructureType.REGIONAL_DIRECTION);
+  const codeAgence = `TST-${RUN}-DAG`;
+  structAgence = await createStructure(codeAgence, structRegion, StructureType.AGENCY);
+  deptAgence = await createDepartment(codeAgence, structAgence);
+
+  await createUser("directeurRegional", [
+    { role: RoleType.HIERARCHICAL_MANAGER, structureId: structRegion, scope: "" },
+  ]);
+  await createUser("employeAgence", [
+    { role: RoleType.EMPLOYEE, structureId: structAgence, scope: codeAgence },
+  ]);
+
+  demandes["agenceDecision"] = await createDemandeRow(
+    `TST-${RUN}-D1`,
+    users["employeAgence"]!,
+    DemandeStatus.EN_ATTENTE_DECISION,
+    deptAgence
+  );
+  demandes["agenceExecution"] = await createDemandeRow(
+    `TST-${RUN}-D2`,
+    users["employeAgence"]!,
+    DemandeStatus.EN_ATTENTE_EXECUTION,
+    deptAgence
+  );
+  demandes["agenceBrouillon"] = await createDemandeRow(
+    `TST-${RUN}-D3`,
+    users["employeAgence"]!,
+    DemandeStatus.BROUILLON,
+    deptAgence
+  );
+
   await new Promise<void>((resolveListen, rejectListen) => {
     server = app.listen(0, "127.0.0.1", () => {
       const address = server.address() as AddressInfo;
@@ -361,6 +400,58 @@ test("visibilité : le responsable de département B voit ses propres demandes �
   const refs = body.map((d) => d.reference);
   assert.ok(refs.includes(`TST-${RUN}-C2`));
   assert.ok(!refs.includes(`TST-${RUN}-C1`));
+});
+
+// ---------------------------------------------------------------------------
+// Direction régionale : visibilité transverse sur les agences rattachées
+// ---------------------------------------------------------------------------
+
+test("visibilité régionale : le directeur régional voit les demandes de ses agences quel que soit le statut", async () => {
+  const { status, body } = await apiJson<DemandeDto[]>("/api/demandes", tokens["directeurRegional"]);
+  assert.equal(status, 200);
+
+  const refs = body.map((d) => d.reference);
+  assert.ok(refs.includes(`TST-${RUN}-D1`), "une demande en attente de décision doit être visible");
+  assert.ok(refs.includes(`TST-${RUN}-D2`), "une demande en attente d'exécution doit être visible");
+});
+
+test("visibilité régionale : les brouillons des agences restent privés à leur auteur", async () => {
+  const { status, body } = await apiJson<DemandeDto[]>("/api/demandes", tokens["directeurRegional"]);
+  assert.equal(status, 200);
+
+  assert.ok(
+    !body.map((d) => d.reference).includes(`TST-${RUN}-D3`),
+    "un brouillon ne doit jamais être visible par le directeur régional"
+  );
+});
+
+test("visibilité régionale : les statistiques et le détail reflètent la même visibilité", async () => {
+  const stats = await apiJson<{
+    totalVisible: number;
+    enAttenteDecision: number;
+    enAttenteExecution: number;
+    brouillons: number;
+  }>("/api/demandes/stats", tokens["directeurRegional"]);
+  assert.equal(stats.status, 200);
+  assert.ok(stats.body.totalVisible >= 2, "les demandes des agences doivent être comptées");
+  assert.ok(stats.body.enAttenteDecision >= 1);
+  assert.ok(stats.body.enAttenteExecution >= 1);
+  assert.equal(stats.body.brouillons, 0, "aucun brouillon ne doit être compté");
+
+  const detail = await apiJson<DemandeDto>(
+    `/api/demandes/${demandes["agenceDecision"]}`,
+    tokens["directeurRegional"]
+  );
+  assert.equal(detail.status, 200, "le détail d'une demande d'agence doit être accessible");
+  assert.equal(detail.body.status, "EN_ATTENTE_DECISION");
+});
+
+test("visibilité régionale : une demande d'agence reste inaccessible aux autres structures", async () => {
+  const { status } = await apiJson<{ code: string }>(
+    `/api/demandes/${demandes["agenceExecution"]}`,
+    tokens["respB"]
+  );
+  assert.equal(status, 404);
 });
 
 // ---------------------------------------------------------------------------

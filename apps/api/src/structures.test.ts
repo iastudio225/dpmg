@@ -65,7 +65,7 @@ before(async () => {
   installInterruptionCleanup(deleteFixtures);
 
   roleStructureId = await createStructureRow(`TST-${RUN}-ROLE`, `TST ${RUN} role`);
-  parentStructureId = await createStructureRow(`TST-${RUN}-PARENT`, `TST ${RUN} parent`, StructureType.DIRECTION);
+  parentStructureId = await createStructureRow(`TST-${RUN}-PARENT`, `TST ${RUN} parent`, StructureType.REGIONAL_DIRECTION);
 
   // Les deux rôles d'administration donnent l'accès en écriture : avoir les deux
   // rend le compte insensible à un nettoyage concurrent des rôles TECHNICAL_ADMIN

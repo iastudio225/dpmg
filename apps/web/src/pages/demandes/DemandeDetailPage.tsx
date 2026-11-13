@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { demandesApi, ApiError, notificationsApi } from "../../services/api";
+import { demandesApi, ApiError, notificationsApi, type DemandeObservationResponse } from "../../services/api";
 import {
   demandeUpdateSchema,
   type DemandeCategory,
@@ -19,6 +19,145 @@ import {
 function css<T extends React.CSSProperties>(styles: T): T {
   return styles;
 }
+
+type ActionKey =
+  | "refuse"
+  | "return"
+  | "dpmgRefuse"
+  | "dpmgReturn"
+  | "dfcDisponible"
+  | "dfcIndisponible"
+  | "observation"
+  | "returnExecution";
+
+type ActionFieldName = "motif" | "commentaire";
+
+interface ActionFieldConfig {
+  name: ActionFieldName;
+  label: string;
+  required?: boolean;
+  requiredMessage?: string;
+  rows?: number;
+}
+
+interface ActionDialogConfig {
+  title: string;
+  description?: string;
+  fields: ActionFieldConfig[];
+  submitLabel: string;
+  pendingLabel: string;
+}
+
+/**
+ * Configuration des boîtes de dialogue d'action.
+ *
+ * Chaque action ouvre un formulaire dédié (motif et/ou commentaire) au lieu
+ * d'une saisie native `window.prompt`, ce qui permet une validation accessible
+ * et des messages d'erreur intégrés au formulaire.
+ */
+const ACTION_DIALOGS: Record<ActionKey, ActionDialogConfig> = {
+  refuse: {
+    title: "Refuser la demande",
+    description: "Le motif du refus sera communiqué à l'auteur de la demande.",
+    fields: [
+      {
+        name: "motif",
+        label: "Motif du refus (obligatoire)",
+        required: true,
+        requiredMessage: "Le motif du refus est requis",
+        rows: 4,
+      },
+    ],
+    submitLabel: "Confirmer le refus",
+    pendingLabel: "Refus en cours...",
+  },
+  return: {
+    title: "Retourner la demande pour correction",
+    description: "Renseignez au moins un motif ou un commentaire pour guider la correction.",
+    fields: [
+      { name: "motif", label: "Motif du retour (optionnel)", rows: 3 },
+      { name: "commentaire", label: "Commentaire de retour (optionnel)", rows: 3 },
+    ],
+    submitLabel: "Confirmer le retour",
+    pendingLabel: "Retour en cours...",
+  },
+  dpmgRefuse: {
+    title: "Refuser la demande (DPMG)",
+    description: "Le motif du refus sera communiqué à l'auteur de la demande.",
+    fields: [
+      {
+        name: "motif",
+        label: "Motif du refus (obligatoire)",
+        required: true,
+        requiredMessage: "Le motif du refus est requis",
+        rows: 4,
+      },
+      { name: "commentaire", label: "Commentaire (optionnel)", rows: 3 },
+    ],
+    submitLabel: "Confirmer le refus",
+    pendingLabel: "Refus DPMG en cours...",
+  },
+  dpmgReturn: {
+    title: "Retourner la demande pour correction (DPMG)",
+    description: "Le motif est obligatoire : il est transmis à l'auteur de la demande.",
+    fields: [
+      {
+        name: "motif",
+        label: "Motif du retour (obligatoire)",
+        required: true,
+        requiredMessage: "Le motif du retour est requis",
+        rows: 4,
+      },
+      { name: "commentaire", label: "Commentaire (optionnel)", rows: 3 },
+    ],
+    submitLabel: "Confirmer le retour",
+    pendingLabel: "Retour DPMG en cours...",
+  },
+  dfcDisponible: {
+    title: "Contrôle financier : financement disponible",
+    description: "Le contrôle sera enregistré et la demande poursuivra son circuit.",
+    fields: [{ name: "motif", label: "Motif / commentaire (optionnel)", rows: 3 }],
+    submitLabel: "Confirmer le financement disponible",
+    pendingLabel: "Contrôle en cours...",
+  },
+  dfcIndisponible: {
+    title: "Contrôle financier : financement indisponible",
+    description: "Le contrôle sera enregistré et la demande restera en attente de financement.",
+    fields: [{ name: "motif", label: "Motif / commentaire (optionnel)", rows: 3 }],
+    submitLabel: "Confirmer le financement indisponible",
+    pendingLabel: "Contrôle en cours...",
+  },
+  observation: {
+    title: "Ajouter une observation",
+    description: "L'observation est visible par les acteurs habilités de la demande.",
+    fields: [
+      {
+        name: "commentaire",
+        label: "Observation (obligatoire)",
+        required: true,
+        requiredMessage: "L'observation est requise",
+        rows: 4,
+      },
+    ],
+    submitLabel: "Ajouter l'observation",
+    pendingLabel: "Ajout...",
+  },
+  returnExecution: {
+    title: "Retourner la demande au département",
+    description: "Le motif est obligatoire : il est transmis au département en charge de l'exécution.",
+    fields: [
+      {
+        name: "motif",
+        label: "Motif du retour (obligatoire)",
+        required: true,
+        requiredMessage: "Le motif du retour est requis",
+        rows: 4,
+      },
+    ],
+    submitLabel: "Confirmer le retour",
+    pendingLabel: "Retour en cours...",
+  },
+};
 
 export function DemandeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,16 +178,24 @@ export function DemandeDetailPage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isApproveLoading, setIsApproveLoading] = useState(false);
   const [isDpmgApproving, setIsDpmgApproving] = useState(false);
-  const [isDpmgRefusing, setIsDpmgRefusing] = useState(false);
-  const [isDpmgReturning, setIsDpmgReturning] = useState(false);
-  const [isDfcControlling, setIsDfcControlling] = useState(false);
+  const [observations, setObservations] = useState<DemandeObservationResponse[]>([]);
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
   const [isSatisfactionLoading, setIsSatisfactionLoading] = useState(false);
+  const [isSatisfactionFormOpen, setIsSatisfactionFormOpen] = useState(false);
+  const [satisfactionMode, setSatisfactionMode] = useState<"url" | "file">("url");
+  const [proofUrlInput, setProofUrlInput] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [satisfactionObservations, setSatisfactionObservations] = useState("");
+  const [satisfactionErrors, setSatisfactionErrors] = useState<Record<string, string>>({});
   const [isClosingLoading, setIsClosingLoading] = useState(false);
-  const [isReturningExecutionLoading, setIsReturningExecutionLoading] = useState(false);
-  const [isRefusing, setIsRefusing] = useState(false);
-  const [isReturning, setIsReturning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Boîte de dialogue générique des actions (refus, retour, contrôle DFC, observation…)
+  const [activeAction, setActiveAction] = useState<ActionKey | null>(null);
+  const [actionMotif, setActionMotif] = useState("");
+  const [actionCommentaire, setActionCommentaire] = useState("");
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [isActionSubmitting, setIsActionSubmitting] = useState(false);
 
   const [avisMotif, setAvisMotif] = useState("");
   const [avisCommentaire, setAvisCommentaire] = useState("");
@@ -59,9 +206,7 @@ export function DemandeDetailPage() {
   const saveEditRef = useRef(false);
   const avisRef = useRef(false);
   const dpmgApproveRef = useRef(false);
-  const dpmgRefuseRef = useRef(false);
-  const dpmgReturnRef = useRef(false);
-  const dfcControlRef = useRef(false);
+  const actionSubmitRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -70,6 +215,8 @@ export function DemandeDetailPage() {
     try {
       const result = await demandesApi.get(id);
       setDemande(result);
+      // Charger les observations DG/CPMP (silencieux en cas d'interdiction)
+      demandesApi.listObservations(id).then(setObservations).catch(() => setObservations([]));
     } catch (err) {
       setDemande(null);
       if (err instanceof ApiError && err.status === 401) {
@@ -105,7 +252,7 @@ export function DemandeDetailPage() {
   const canValidate =
     !isAuthor &&
     demande?.status === "EN_ATTENTE_VALIDATION" &&
-    roles.some((r) => r.role === "HIERARCHICAL_MANAGER" || r.role === "DEPARTMENT_MANAGER");
+    roles.some((r) => r.role === "HIERARCHICAL_MANAGER" || r.role === "DEPARTMENT_MANAGER" || r.role === "DELEGATED_REPRESENTATIVE");
 
   /**
    * Éligibilité à une décision DPMG, calculée à partir des rôles ACTIFS exposés
@@ -122,6 +269,7 @@ export function DemandeDetailPage() {
     demande?.status === "EN_ATTENTE_FINANCEMENT" &&
     roles.some((r) => r.role === "DFC_CONTROLLER");
 
+  const canObserve = roles.some((r) => r.role === "DG_USER" || r.role === "CPMP_USER");
   const canExecution =
     !isAuthor &&
     demande?.status === "EN_ATTENTE_EXECUTION" &&
@@ -148,9 +296,9 @@ export function DemandeDetailPage() {
     roles.some(
       (r) =>
         (r.role === "DEPARTMENT_MANAGER" || r.role === "DEPARTMENT_DELEGATE") &&
-        !!r.scope &&
         r.scope !== "*" &&
-        r.scope === demande.departmentCode
+        (r.scope === demande.departmentCode ||
+          (r.scope === null && r.structureCode === demande.departmentCode))
     );
 
   const reload = useCallback(() => {
@@ -267,65 +415,102 @@ export function DemandeDetailPage() {
     }
   }
 
-  async function handleRefuse() {
-    if (!demande || isRefusing) return;
-    setIsRefusing(true);
+  function openActionDialog(action: ActionKey) {
+    setActiveAction(action);
+    setActionMotif("");
+    setActionCommentaire("");
+    setActionErrors({});
     setActionError(null);
-    const motif = window.prompt("Entrez le motif du refus :");
-    if (motif === null || motif.trim() === "") {
-      setActionError("Le motif du refus est requis");
-      setIsRefusing(false);
-      return;
+  }
+
+  function closeActionDialog() {
+    setActiveAction(null);
+    setActionErrors({});
+  }
+
+  async function handleActionSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!demande || !activeAction || actionSubmitRef.current) return;
+
+    const config = ACTION_DIALOGS[activeAction];
+    const motif = actionMotif.trim();
+    const commentaire = actionCommentaire.trim();
+
+    const errors: Record<string, string> = {};
+    for (const field of config.fields) {
+      if (!field.required) continue;
+      const value = field.name === "motif" ? motif : commentaire;
+      if (value === "") {
+        errors[field.name] = field.requiredMessage ?? "Ce champ est requis";
+      }
     }
+    setActionErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setActionError(null);
+    actionSubmitRef.current = true;
+    setIsActionSubmitting(true);
     try {
-      const updated = await demandesApi.refuse(demande.id, motif);
-      setDemande(updated);
-      setActionError(null);
+      let updated: DemandeResponse | null = null;
+      switch (activeAction) {
+        case "refuse":
+          updated = await demandesApi.refuse(demande.id, motif);
+          break;
+        case "return":
+          updated = await demandesApi.return(demande.id, motif || undefined, commentaire || undefined);
+          break;
+        case "dpmgRefuse":
+          updated = await demandesApi.dpmgRefuse(demande.id, motif, commentaire || undefined);
+          break;
+        case "dpmgReturn":
+          updated = await demandesApi.dpmgReturn(demande.id, motif, commentaire || undefined);
+          break;
+        case "dfcDisponible":
+          updated = await demandesApi.dfcControl(demande.id, "DISPONIBLE", motif || undefined);
+          break;
+        case "dfcIndisponible":
+          updated = await demandesApi.dfcControl(demande.id, "INDISPONIBLE", motif || undefined);
+          break;
+        case "observation": {
+          const obs = await demandesApi.addObservation(demande.id, commentaire);
+          setObservations((prev) => [...prev, obs]);
+          break;
+        }
+        case "returnExecution":
+          updated = await demandesApi.returnForExecution(demande.id, motif);
+          break;
+      }
+
+      if (updated) setDemande(updated);
+      setActiveAction(null);
+      setActionMotif("");
+      setActionCommentaire("");
+      setActionErrors({});
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setActionError("Session expirée. Veuillez vous reconnecter.");
         refreshUser().catch(() => {
           /* la redirection login est gérée par PrivateRoute */
         });
+      } else if (err instanceof ApiError && err.status === 400) {
+        const details = firstFieldErrorsFromDetails(err.details ?? {});
+        if (Object.keys(details).length > 0) {
+          setActionErrors(details);
+        } else {
+          setActionError(err.message || "Données invalides");
+        }
       } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors du refus");
+        setActionError(err.message || "Erreur lors de l'action");
       } else {
         setActionError("Erreur de connexion au serveur");
       }
     } finally {
-      setIsRefusing(false);
+      actionSubmitRef.current = false;
+      setIsActionSubmitting(false);
     }
   }
 
-  async function handleReturn() {
-    if (!demande || isReturning) return;
-    setIsReturning(true);
-    setActionError(null);
-    const motifInput = window.prompt("Entrez le motif du retour (optionnel) :");
-    const commentaireInput = window.prompt("Entrez un commentaire de retour (optionnel) :");
-    const motif = motifInput ? motifInput.trim() : "";
-    const commentaire = commentaireInput ? commentaireInput.trim() : "";
-    try {
-      const updated = await demandesApi.return(demande.id, motif || undefined, commentaire || undefined);
-      setDemande(updated);
-      setActionError(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setActionError("Session expirée. Veuillez vous reconnecter.");
-        refreshUser().catch(() => {
-          /* la redirection login est gérée par PrivateRoute */
-        });
-      } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors du retour");
-      } else {
-        setActionError("Erreur de connexion au serveur");
-      }
-    } finally {
-      setIsReturning(false);
-    }
-  }
-
-async function handleDpmgApprove() {
+  async function handleDpmgApprove() {
     if (!demande || isDpmgApproving || dpmgApproveRef.current) return;
     dpmgApproveRef.current = true;
     setIsDpmgApproving(true);
@@ -351,110 +536,6 @@ async function handleDpmgApprove() {
     }
   }
 
-  async function handleDpmgRefuse() {
-    if (!demande || isDpmgRefusing || dpmgRefuseRef.current) return;
-    dpmgRefuseRef.current = true;
-    setIsDpmgRefusing(true);
-    setActionError(null);
-    const motif = window.prompt("Entrez le motif du refus DPMG :");
-    if (motif === null || motif.trim() === "") {
-      setActionError("Le motif du refus est requis");
-      dpmgRefuseRef.current = false;
-      setIsDpmgRefusing(false);
-      return;
-    }
-    try {
-      const updated = await demandesApi.dpmgRefuse(demande.id, motif.trim());
-      setDemande(updated);
-      setActionError(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setActionError("Session expirée. Veuillez vous reconnecter.");
-        refreshUser().catch(() => {
-          /* la redirection login est gérée par PrivateRoute */
-        });
-      } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors de la décision DPMG");
-      } else {
-        setActionError("Erreur de connexion au serveur");
-      }
-    } finally {
-      dpmgRefuseRef.current = false;
-      setIsDpmgRefusing(false);
-    }
-  }
-
-  async function handleDpmgReturn() {
-    if (!demande || isDpmgReturning || dpmgReturnRef.current) return;
-    dpmgReturnRef.current = true;
-    setIsDpmgReturning(true);
-    setActionError(null);
-    const motifInput = window.prompt("Entrez le motif du retour DPMG (obligatoire) :");
-    if (motifInput === null || motifInput.trim() === "") {
-      setActionError("Le motif du retour est requis");
-      dpmgReturnRef.current = false;
-      setIsDpmgReturning(false);
-      return;
-    }
-    const commentaireInput = window.prompt("Entrez un commentaire (optionnel) :");
-    const commentaire = commentaireInput ? commentaireInput.trim() : "";
-    try {
-      const updated = await demandesApi.dpmgReturn(
-        demande.id,
-        motifInput.trim(),
-        commentaire || undefined
-      );
-      setDemande(updated);
-      setActionError(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setActionError("Session expirée. Veuillez vous reconnecter.");
-        refreshUser().catch(() => {
-          /* la redirection login est gérée par PrivateRoute */
-        });
-      } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors de la décision DPMG");
-      } else {
-        setActionError("Erreur de connexion au serveur");
-      }
-    } finally {
-      dpmgReturnRef.current = false;
-      setIsDpmgReturning(false);
-    }
-  }
-
-async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
-    if (!demande || isDfcControlling || dfcControlRef.current) return;
-    dfcControlRef.current = true;
-    setIsDfcControlling(true);
-    setActionError(null);
-    const motifInput = window.prompt("Motif du contrôle DFC (optionnel) :");
-    const motif = motifInput ? motifInput.trim() : "";
-    try {
-      const updated = await demandesApi.dfcControl(
-        demande.id,
-        result,
-        motif || undefined
-      );
-      setDemande(updated);
-      setActionError(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setActionError("Session expirée. Veuillez vous reconnecter.");
-        refreshUser().catch(() => {
-          /* la redirection login est gérée par PrivateRoute */
-        });
-      } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors du contrôle financier");
-      } else {
-        setActionError("Erreur de connexion au serveur");
-      }
-    } finally {
-      dfcControlRef.current = false;
-      setIsDfcControlling(false);
-    }
-  }
-
   async function handleStartExecution() {
     if (!demande || isExecutionLoading) return;
     setIsExecutionLoading(true);
@@ -477,25 +558,78 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
     }
   }
 
-  async function handleDeclareSatisfaction() {
+  function openSatisfactionForm() {
+    setSatisfactionMode("url");
+    setProofUrlInput("");
+    setProofFile(null);
+    setSatisfactionObservations("");
+    setSatisfactionErrors({});
+    setActionError(null);
+    setIsSatisfactionFormOpen(true);
+  }
+
+  function closeSatisfactionForm() {
+    setIsSatisfactionFormOpen(false);
+    setSatisfactionErrors({});
+    setActionError(null);
+  }
+
+  async function handleDeclareSatisfaction(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!demande || isSatisfactionLoading) return;
+
+    const url = proofUrlInput.trim();
+    const errors: Record<string, string> = {};
+    if (satisfactionMode === "url") {
+      if (url === "") {
+        errors["proofUrl"] = "Le justificatif est requis";
+      } else {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            errors["proofUrl"] = "Seules les URL http(s) sont acceptées";
+          }
+        } catch {
+          errors["proofUrl"] = "URL de justificatif invalide";
+        }
+      }
+    } else if (!proofFile) {
+      errors["proofFile"] = "Sélectionnez un fichier justificatif";
+    }
+
+    setSatisfactionErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setIsSatisfactionLoading(true);
     setActionError(null);
-    const proofUrl = window.prompt("URL du justificatif d'exécution (obligatoire) :");
-    if (proofUrl === null || proofUrl.trim() === "") {
-      setActionError("Le justificatif est requis");
-      setIsSatisfactionLoading(false);
-      return;
-    }
-    const observations = window.prompt("Observations (optionnel) :");
     try {
-      const updated = await demandesApi.declareSatisfaction(demande.id, proofUrl.trim(), observations ? observations.trim() : undefined);
+      const updated =
+        satisfactionMode === "file"
+          ? await demandesApi.uploadSatisfactionProof(
+              demande.id,
+              proofFile as File,
+              satisfactionObservations
+            )
+          : await demandesApi.declareSatisfaction(
+              demande.id,
+              url,
+              satisfactionObservations
+            );
       setDemande(updated);
-      setActionError(null);
+      setIsSatisfactionFormOpen(false);
+      setProofUrlInput("");
+      setProofFile(null);
+      setSatisfactionObservations("");
+      setSatisfactionErrors({});
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setActionError("Session expirée. Veuillez vous reconnecter.");
         refreshUser().catch(() => {});
+      } else if (err instanceof ApiError && err.status === 413) {
+        setActionError(err.message || "Le fichier justificatif est trop volumineux");
+      } else if (err instanceof ApiError && err.status === 400) {
+        setSatisfactionErrors(firstFieldErrorsFromDetails(err.details ?? {}));
+        setActionError(err.message || "Le justificatif est invalide");
       } else if (err instanceof ApiError) {
         setActionError(err.message || "Erreur lors de la déclaration de satisfaction");
       } else {
@@ -525,34 +659,6 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
       }
     } finally {
       setIsClosingLoading(false);
-    }
-  }
-
-  async function handleReturnForExecution() {
-    if (!demande || isReturningExecutionLoading) return;
-    setIsReturningExecutionLoading(true);
-    setActionError(null);
-    const motif = window.prompt("Motif du retour au département (obligatoire) :");
-    if (motif === null || motif.trim() === "") {
-      setActionError("Le motif du retour est requis");
-      setIsReturningExecutionLoading(false);
-      return;
-    }
-    try {
-      const updated = await demandesApi.returnForExecution(demande.id, motif.trim());
-      setDemande(updated);
-      setActionError(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setActionError("Session expirée. Veuillez vous reconnecter.");
-        refreshUser().catch(() => {});
-      } else if (err instanceof ApiError) {
-        setActionError(err.message || "Erreur lors du retour");
-      } else {
-        setActionError("Erreur de connexion au serveur");
-      }
-    } finally {
-      setIsReturningExecutionLoading(false);
     }
   }
 
@@ -867,6 +973,29 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
       fontSize: "0.8125rem",
       color: "var(--color-error)",
     }),
+    dialogOverlay: css({
+      position: "fixed" as const,
+      inset: 0,
+      background: "rgba(15, 23, 42, 0.55)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "1.5rem",
+      zIndex: 1000,
+    }),
+    dialog: css({
+      display: "flex",
+      flexDirection: "column",
+      gap: "1.25rem",
+      width: "100%",
+      maxWidth: "560px",
+      maxHeight: "calc(100vh - 3rem)",
+      overflowY: "auto" as const,
+      padding: "1.75rem",
+      background: "var(--color-background)",
+      borderRadius: "var(--radius-md)",
+      boxShadow: "0 20px 50px rgba(15, 23, 42, 0.25)",
+    }),
   };
 
   if (loadError) {
@@ -1001,6 +1130,22 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
           <p style={styles.descriptionText}>{demande.description}</p>
         </div>
 
+        {(demande.departmentAvisMotif || demande.departmentAvisCommentaire) && (
+          <div style={styles.descriptionSection}>
+            <h2 style={styles.descriptionLabel}>Avis départemental</h2>
+            {demande.departmentAvisMotif && (
+              <p style={styles.descriptionText}>
+                <strong>Motif :</strong> {demande.departmentAvisMotif}
+              </p>
+            )}
+            {demande.departmentAvisCommentaire && (
+              <p style={styles.descriptionText}>
+                <strong>Commentaire :</strong> {demande.departmentAvisCommentaire}
+              </p>
+            )}
+          </div>
+        )}
+
         {demande.satisfactionProofUrl ? (
           <div style={styles.descriptionSection}>
             <h2 style={styles.descriptionLabel}>Justificatif de satisfaction</h2>
@@ -1010,7 +1155,9 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
               rel="noopener noreferrer"
               style={styles.stateLink}
             >
-              {demande.satisfactionProofUrl}
+              {demande.satisfactionProofUrl.startsWith("/api/")
+                ? "Télécharger le justificatif"
+                : demande.satisfactionProofUrl}
             </a>
             {demande.satisfactionObservations && (
               <p style={{ ...styles.descriptionText, marginTop: "0.5rem" }}>
@@ -1153,19 +1300,17 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
             </button>
             <button
               type="button"
-              disabled={isRefusing}
               style={styles.secondaryButton}
-              onClick={() => handleRefuse()}
+              onClick={() => openActionDialog("refuse")}
             >
-              {isRefusing ? "Refus en cours..." : "Refuser"}
+              Refuser
             </button>
             <button
               type="button"
-              disabled={isReturning}
               style={styles.secondaryButton}
-              onClick={() => handleReturn()}
+              onClick={() => openActionDialog("return")}
             >
-              {isReturning ? "Retour en cours..." : "Retourner pour correction"}
+              Retourner pour correction
             </button>
           </div>
         )}
@@ -1189,19 +1334,17 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
             </button>
             <button
               type="button"
-              disabled={isDpmgRefusing}
               style={styles.secondaryButton}
-              onClick={() => handleDpmgRefuse()}
+              onClick={() => openActionDialog("dpmgRefuse")}
             >
-              {isDpmgRefusing ? "Refus DPMG en cours..." : "Refuser (DPMG)"}
+              Refuser (DPMG)
             </button>
             <button
               type="button"
-              disabled={isDpmgReturning}
               style={styles.secondaryButton}
-              onClick={() => handleDpmgReturn()}
+              onClick={() => openActionDialog("dpmgReturn")}
             >
-              {isDpmgReturning ? "Retour DPMG en cours..." : "Retourner pour correction (DPMG)"}
+              Retourner pour correction (DPMG)
             </button>
           </div>
         )}
@@ -1210,39 +1353,188 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
           <div style={styles.actions}>
             <button
               type="button"
-              disabled={isDfcControlling}
               style={styles.primaryButton}
-              onClick={() => handleDfcControl("DISPONIBLE")}
+              onClick={() => openActionDialog("dfcDisponible")}
             >
-              {isDfcControlling ? (
-                <>
-                  <span style={styles.spinner} aria-hidden="true" />
-                  Contrôle en cours...
-                </>
-              ) : (
-                "Financement disponible"
-              )}
+              Financement disponible
             </button>
             <button
               type="button"
-              disabled={isDfcControlling}
               style={styles.secondaryButton}
-              onClick={() => handleDfcControl("INDISPONIBLE")}
+              onClick={() => openActionDialog("dfcIndisponible")}
             >
-              {isDfcControlling ? "Contrôle en cours..." : "Financement indisponible"}
+              Financement indisponible
             </button>
           </div>
         )}
 
-                {canExecution && !isEditOpen && (
+                {canObserve && !isEditOpen && (
           <div style={styles.actions}>
-            <button type="button" disabled={isExecutionLoading} style={styles.primaryButton} onClick={() => handleStartExecution()}>
-              {isExecutionLoading ? "Prise en charge..." : "Prendre en charge"}
-            </button>
-            <button type="button" disabled={isSatisfactionLoading} style={styles.primaryButton} onClick={() => handleDeclareSatisfaction()}>
-              {isSatisfactionLoading ? "Déclaration..." : "Déclarer l'exécution terminée"}
+            <button
+              type="button"
+              style={styles.secondaryButton}
+              onClick={() => openActionDialog("observation")}
+            >
+              Ajouter une observation (DG/CPMP)
             </button>
           </div>
+        )}
+
+        {observations.length > 0 && (
+          <div style={styles.card}>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>Observations DG / CPMP</h2>
+            {observations.map((obs) => (
+              <div key={obs.id} style={{ marginBottom: "0.5rem" }}>
+                <strong>{obs.type === "OBSERVATION_CPMP" ? "CPMP" : "DG"}</strong> — {obs.commentaire}
+                <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+                  {new Date(obs.createdAt).toLocaleString("fr-FR")}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {canExecution && !isEditOpen && (
+          <>
+            <div style={styles.actions}>
+              <button type="button" disabled={isExecutionLoading || !!demande?.executionStartedAt} style={styles.primaryButton} onClick={() => handleStartExecution()}>
+                {isExecutionLoading ? "Prise en charge..." : demande?.executionStartedAt ? "Prise en charge effectuée" : "Prendre en charge"}
+              </button>
+              {!isSatisfactionFormOpen && (
+                <button
+                  type="button"
+                  disabled={isSatisfactionLoading || !demande?.executionStartedAt}
+                  style={styles.primaryButton}
+                  onClick={openSatisfactionForm}
+                >
+                  Déclarer l'exécution terminée
+                </button>
+              )}
+            </div>
+
+            {isSatisfactionFormOpen && (
+              <form style={styles.form} onSubmit={handleDeclareSatisfaction} noValidate>
+                <h2 style={styles.formTitle}>Déclarer l'exécution terminée</h2>
+                <p style={styles.descriptionText}>
+                  Joignez un fichier justificatif (PDF, image ou document Word) ou indiquez le lien
+                  vers un document hébergé (Drive, SharePoint, intranet…).
+                </p>
+
+                <div style={styles.field}>
+                  <span style={styles.label}>Type de justificatif</span>
+                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9375rem" }}>
+                      <input
+                        type="radio"
+                        name="satisfaction-mode"
+                        value="url"
+                        checked={satisfactionMode === "url"}
+                        onChange={() => {
+                          setSatisfactionMode("url");
+                          setSatisfactionErrors({});
+                        }}
+                      />
+                      Lien externe
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9375rem" }}>
+                      <input
+                        type="radio"
+                        name="satisfaction-mode"
+                        value="file"
+                        checked={satisfactionMode === "file"}
+                        onChange={() => {
+                          setSatisfactionMode("file");
+                          setSatisfactionErrors({});
+                        }}
+                      />
+                      Fichier
+                    </label>
+                  </div>
+                </div>
+
+                {satisfactionMode === "url" ? (
+                  <div style={styles.field}>
+                    <label htmlFor="proof-url" style={styles.label}>
+                      URL du justificatif (obligatoire)
+                    </label>
+                    <input
+                      key="proof-url"
+                      id="proof-url"
+                      type="url"
+                      placeholder="https://exemple.com/justificatif.pdf"
+                      value={proofUrlInput}
+                      onChange={(e) => setProofUrlInput(e.target.value)}
+                      style={{
+                        ...styles.input,
+                        ...(satisfactionErrors["proofUrl"] ? styles.inputError : {}),
+                      }}
+                      aria-invalid={satisfactionErrors["proofUrl"] ? true : undefined}
+                      aria-describedby={satisfactionErrors["proofUrl"] ? "proof-url-error" : undefined}
+                    />
+                    {satisfactionErrors["proofUrl"] && (
+                      <p id="proof-url-error" style={styles.errorText} role="alert">
+                        {satisfactionErrors["proofUrl"]}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div style={styles.field}>
+                    <label htmlFor="proof-file" style={styles.label}>
+                      Fichier justificatif (obligatoire)
+                    </label>
+                    <input
+                      key="proof-file"
+                      id="proof-file"
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                      onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                      style={{
+                        ...styles.input,
+                        ...(satisfactionErrors["proofFile"] ? styles.inputError : {}),
+                      }}
+                      aria-invalid={satisfactionErrors["proofFile"] ? true : undefined}
+                      aria-describedby={satisfactionErrors["proofFile"] ? "proof-file-error" : undefined}
+                    />
+                    <span style={{ fontSize: "0.8125rem", color: "var(--color-text-muted)" }}>
+                      PDF, PNG, JPEG, WEBP, DOC ou DOCX — 10 Mo maximum.
+                    </span>
+                    {satisfactionErrors["proofFile"] && (
+                      <p id="proof-file-error" style={styles.errorText} role="alert">
+                        {satisfactionErrors["proofFile"]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div style={styles.field}>
+                  <label htmlFor="proof-observations" style={styles.label}>
+                    Observations (optionnel)
+                  </label>
+                  <textarea
+                    id="proof-observations"
+                    rows={3}
+                    value={satisfactionObservations}
+                    onChange={(e) => setSatisfactionObservations(e.target.value)}
+                    style={styles.textarea}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button type="submit" disabled={isSatisfactionLoading} style={styles.primaryButton}>
+                    {isSatisfactionLoading ? "Déclaration..." : "Déclarer l'exécution terminée"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSatisfactionLoading}
+                    style={styles.cancelButton}
+                    onClick={closeSatisfactionForm}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
         )}
 
         {canClose && !isEditOpen && (
@@ -1250,8 +1542,8 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
             <button type="button" disabled={isClosingLoading} style={styles.primaryButton} onClick={() => handleCloseDemande()}>
               {isClosingLoading ? "Clôture..." : "Clôturer la demande"}
             </button>
-            <button type="button" disabled={isReturningExecutionLoading} style={styles.secondaryButton} onClick={() => handleReturnForExecution()}>
-              {isReturningExecutionLoading ? "Retour..." : "Retourner au département"}
+            <button type="button" style={styles.secondaryButton} onClick={() => openActionDialog("returnExecution")}>
+              Retourner au département
             </button>
           </div>
         )}
@@ -1359,6 +1651,78 @@ async function handleDfcControl(result: "DISPONIBLE" | "INDISPONIBLE") {
               </button>
             </div>
           </form>
+        )}
+
+        {activeAction && (
+          <div
+            style={styles.dialogOverlay}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isActionSubmitting) closeActionDialog();
+            }}
+          >
+            <form
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="action-dialog-title"
+              style={styles.dialog}
+              onSubmit={handleActionSubmit}
+              noValidate
+            >
+              <h2 id="action-dialog-title" style={styles.formTitle}>
+                {ACTION_DIALOGS[activeAction].title}
+              </h2>
+              {ACTION_DIALOGS[activeAction].description && (
+                <p style={styles.descriptionText}>{ACTION_DIALOGS[activeAction].description}</p>
+              )}
+
+              {ACTION_DIALOGS[activeAction].fields.map((field, index) => {
+                const value = field.name === "motif" ? actionMotif : actionCommentaire;
+                const setValue = field.name === "motif" ? setActionMotif : setActionCommentaire;
+                const error = actionErrors[field.name];
+                const inputId = `action-${activeAction}-${field.name}`;
+                const errorId = `${inputId}-error`;
+                return (
+                  <div key={field.name} style={styles.field}>
+                    <label htmlFor={inputId} style={styles.label}>
+                      {field.label}
+                    </label>
+                    <textarea
+                      id={inputId}
+                      rows={field.rows ?? 3}
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      disabled={isActionSubmitting}
+                      autoFocus={index === 0}
+                      style={{ ...styles.textarea, ...(error ? styles.inputError : {}) }}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? errorId : undefined}
+                    />
+                    {error && (
+                      <p id={errorId} style={styles.errorText} role="alert">
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div style={styles.actions}>
+                <button type="submit" disabled={isActionSubmitting} style={styles.primaryButton}>
+                  {isActionSubmitting
+                    ? ACTION_DIALOGS[activeAction].pendingLabel
+                    : ACTION_DIALOGS[activeAction].submitLabel}
+                </button>
+                <button
+                  type="button"
+                  disabled={isActionSubmitting}
+                  style={styles.cancelButton}
+                  onClick={closeActionDialog}
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </div>

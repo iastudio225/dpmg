@@ -15,6 +15,7 @@ import { StructureForm } from "./pages/structures/StructureForm";
 import { DepartementsPage } from "./pages/departements/DepartementsPage";
 import { DepartementForm } from "./pages/departements/DepartementForm";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { ParametresPage } from "./pages/ParametresPage";
 import "./index.css";
 
 function css<T extends React.CSSProperties>(styles: T): T {
@@ -62,18 +63,6 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
-function PlaceholderPage({ title, description }: { title: string; description: string }) {
-  return (
-    <div style={placeholderStyles.container}>
-      <div className="card" style={placeholderStyles.card}>
-        <h2 style={placeholderStyles.title}>{title}</h2>
-        <p style={placeholderStyles.text}>{description}</p>
-        <p style={placeholderStyles.note}>Ce module sera implémenté dans une phase ultérieure.</p>
-      </div>
-    </div>
-  );
-}
-
 function AppRoutes() {
   return (
     <Routes>
@@ -99,7 +88,7 @@ function AppRoutes() {
         <Route path="departements" element={<DepartementsPage />} />
         <Route path="departements/nouveau" element={<DepartementForm />} />
         <Route path="departements/:id/modifier" element={<DepartementForm />} />
-        <Route path="parametres" element={<PlaceholderPage title="Paramètres" description="Configuration de l'application" />} />
+        <Route path="parametres" element={<ParametresPage />} />
         <Route path="changer-mot-de-passe" element={<ChangePasswordPage />} />
       </Route>
     </Routes>
@@ -133,36 +122,6 @@ const loadingStyles = {
     borderTopColor: "var(--color-primary)",
     borderRadius: "50%",
     animation: "spin 1s linear infinite",
-  }),
-};
-
-const placeholderStyles = {
-  container: css({
-    display: "flex",
-    justifyContent: "center",
-    paddingTop: "3rem",
-  }),
-  card: css({
-    maxWidth: "600px",
-    textAlign: "center",
-    padding: "3rem 2rem",
-    borderTop: "3px solid var(--color-primary)",
-  }),
-  title: css({
-    fontSize: "1.5rem",
-    fontWeight: 600,
-    color: "var(--color-text)",
-    marginBottom: "1rem",
-  }),
-  text: css({
-    color: "var(--color-text-muted)",
-    fontSize: "1rem",
-    marginBottom: "1.5rem",
-  }),
-  note: css({
-    color: "var(--color-text-muted)",
-    fontSize: "0.875rem",
-    fontStyle: "italic",
   }),
 };
 
