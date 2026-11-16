@@ -18,6 +18,8 @@ import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { ParametresPage } from "./pages/ParametresPage";
 import { DgPage } from "./pages/dg/DgPage";
 import { CpmpPage } from "./pages/cpmp/CpmpPage";
+import { PrestatairesPage } from "./pages/cpmp/PrestatairesPage";
+import { CpmpDemandeDetailPage } from "./pages/cpmp/CpmpDemandeDetailPage";
 import { ConsolidationsPage } from "./pages/consolidations/ConsolidationsPage";
 import "./index.css";
 
@@ -95,6 +97,8 @@ function AppRoutes() {
         <Route path="consolidations" element={<ConsolidationsPage />} />
         <Route path="dg" element={<DgPage />} />
         <Route path="cpmp" element={<CpmpPage />} />
+        <Route path="cpmp/prestataires" element={<PrestatairesPage />} />
+        <Route path="cpmp/demandes/:id" element={<CpmpDemandeDetailPage />} />
         <Route path="changer-mot-de-passe" element={<ChangePasswordPage />} />
       </Route>
     </Routes>

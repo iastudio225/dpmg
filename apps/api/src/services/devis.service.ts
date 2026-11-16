@@ -1,13 +1,53 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middleware/errorHandler";
 
-async function assertDemandeAccess(demandeId: string) {
-  const d = await prisma.demande.findUnique({ where: { id: demandeId } });
+function scopeCovers(scope: string | null, departmentCode: string): boolean {
+  if (!scope) return false;
+  if (scope === "*") return true;
+  return scope === departmentCode;
+}
+
+export async function assertDemandeAccess(userId: string, demandeId: string) {
+  const d = await prisma.demande.findUnique({
+    where: { id: demandeId },
+    include: { department: { select: { code: true } } },
+  });
   if (!d) throw new AppError("NOT_FOUND", "Demande non trouvée", 404);
+
+  const now = new Date();
+
+  // Les administrateurs conservent l'accès global, sous les mêmes conditions
+  // temporelles et de statut que les autres affectations.
+  const adminRoles = await prisma.userStructureRole.findMany({
+    where: {
+      userId,
+      role: { in: ["SUPER_ADMIN", "TECHNICAL_ADMIN"] as any },
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: "ACTIVE" as any },
+    },
+    select: { role: true },
+  });
+  if (adminRoles.length > 0) return;
+
+  const habilitations = await prisma.userStructureRole.findMany({
+    where: {
+      userId,
+      role: "CPMP_USER" as any,
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      user: { status: "ACTIVE" as any },
+    },
+    select: { scope: true },
+  });
+  const authorized = habilitations.some((h) => scopeCovers(h.scope, d.department.code));
+  if (!authorized) {
+    throw new AppError("FORBIDDEN", "Vous n'êtes pas habilité à accéder à cette demande", 403);
+  }
 }
 
 export async function createDevis(data: any, userId: string) {
-  await assertDemandeAccess(data.demandeId);
+  await assertDemandeAccess(userId, data.demandeId);
   const demande = await prisma.demande.findUnique({ where: { id: data.demandeId } });
   if (!demande) throw new AppError("NOT_FOUND", "Demande non trouvée", 404);
   const prestataire = await prisma.prestataire.findUnique({ where: { id: data.prestataireId } });
@@ -41,8 +81,8 @@ export async function createDevis(data: any, userId: string) {
   });
 }
 
-export async function listDevisByDemande(demandeId: string, page = 1, limit = 20) {
-  await assertDemandeAccess(demandeId);
+export async function listDevisByDemande(userId: string, demandeId: string, page = 1, limit = 20) {
+  await assertDemandeAccess(userId, demandeId);
   const [items, total] = await Promise.all([
     prisma.devis.findMany({ where: { demandeId }, include: { prestataire: true }, orderBy: { createdAt: "desc" }, skip: (page-1)*limit, take: limit }),
     prisma.devis.count({ where: { demandeId } }),
@@ -50,17 +90,17 @@ export async function listDevisByDemande(demandeId: string, page = 1, limit = 20
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-export async function getDevis(id: string) {
+export async function getDevis(userId: string, id: string) {
   const d = await prisma.devis.findUnique({ where: { id }, include: { prestataire: true, demande: true } });
   if (!d) throw new AppError("NOT_FOUND", "Devis non trouvé", 404);
-  await assertDemandeAccess(d.demandeId);
+  await assertDemandeAccess(userId, d.demandeId);
   return d;
 }
 
-export async function updateDevis(id: string, data: any) {
+export async function updateDevis(userId: string, id: string, data: any) {
   const existing = await prisma.devis.findUnique({ where: { id } });
   if (!existing) throw new AppError("NOT_FOUND", "Devis non trouvé", 404);
-  await assertDemandeAccess(existing.demandeId);
+  await assertDemandeAccess(userId, existing.demandeId);
   const ht = data.montantHT !== undefined ? data.montantHT : (existing.montantHT ? Number(existing.montantHT) : null);
   const tva = data.montantTVA !== undefined ? data.montantTVA : (existing.montantTVA ? Number(existing.montantTVA) : null);
   const ttc = data.montantTTC !== undefined ? data.montantTTC : (existing.montantTTC ? Number(existing.montantTTC) : null);
@@ -89,13 +129,15 @@ export async function updateDevis(id: string, data: any) {
   return prisma.devis.update({ where: { id }, data: updateData });
 }
 
-export async function deleteDevis(id: string) {
+export async function deleteDevis(userId: string, id: string) {
   const existing = await prisma.devis.findUnique({ where: { id }, include: { documents: true } });
   if (!existing) throw new AppError("NOT_FOUND", "Devis non trouvé", 404);
-  await assertDemandeAccess(existing.demandeId);
+  await assertDemandeAccess(userId, existing.demandeId);
   if (existing.documents && existing.documents.length > 0) {
     throw new AppError("DEVIS_HAS_DOCUMENTS", "Le devis est associé à des documents", 409);
   }
   await prisma.devis.delete({ where: { id } });
   return { deleted: true };
 }
+
+

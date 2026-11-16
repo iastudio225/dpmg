@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { consolidationsApi } from "../../services/api";
 import { ConsolidationResponse, ConsolidationObservationResponse } from "@dpmg/shared";
 
@@ -57,7 +58,7 @@ export function CpmpPage() {
           <p>Statut: {detail.status}</p>
           <ul>
             {detail.demandes.map((d) => (
-              <li key={d.id}>{d.reference ?? d.id} — {d.title}</li>
+              <li key={d.id}>{d.reference ?? d.id} — {d.title} <Link to={`/cpmp/demandes/${d.id}`}>Consulter la demande</Link></li>
             ))}
           </ul>
           <h3>Observations CPMP</h3>

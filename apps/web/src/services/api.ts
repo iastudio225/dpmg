@@ -470,6 +470,37 @@ export const databaseAdminApi = {
     ),
 };
 
+export const prestatairesApi = {
+  list: (params?: { search?: string; isActive?: boolean; page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.isActive !== undefined) query.set("isActive", String(params.isActive));
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return fetchApi<any>(`/prestataires${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => fetchApi<any>(`/prestataires/${encodeURIComponent(id)}`),
+  create: (payload: any) => fetchApi<any>("/prestataires", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: string, payload: any) => fetchApi<any>(`/prestataires/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  activate: (id: string) => fetchApi<any>(`/prestataires/${encodeURIComponent(id)}/activate`, { method: "POST" }),
+  deactivate: (id: string) => fetchApi<any>(`/prestataires/${encodeURIComponent(id)}/deactivate`, { method: "POST" }),
+};
+
+export const devisApi = {
+  listByDemande: (demandeId: string, params?: { page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return fetchApi<any>(`/devis/demande/${encodeURIComponent(demandeId)}${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => fetchApi<any>(`/devis/${encodeURIComponent(id)}`),
+  create: (payload: any) => fetchApi<any>("/devis", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: string, payload: any) => fetchApi<any>(`/devis/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  delete: (id: string) => fetchApi<any>(`/devis/${encodeURIComponent(id)}`, { method: "DELETE" }),
+};
+
 export const consolidationsApi = {
   list: () => fetchApi<ConsolidationResponse[]>("/consolidations"),
   get: (id: string) => fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}`),

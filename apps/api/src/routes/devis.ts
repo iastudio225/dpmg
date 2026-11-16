@@ -14,12 +14,12 @@ const roles = [CPMP, SA, TA] as const;
 router.get("/demande/:demandeId", requireAuth, requireRole(...roles), asyncHandler(async (req, res) => {
   const page = req.query["page"] ? Number(req.query["page"]) : 1;
   const limit = req.query["limit"] ? Number(req.query["limit"]) : 20;
-  const result = await svc.listDevisByDemande(req.params["demandeId"]!, page, limit);
+  const result = await svc.listDevisByDemande(req.user!.id, req.params["demandeId"]!, page, limit);
   return res.json(result);
 }));
 
 router.get("/:id", requireAuth, requireRole(...roles), asyncHandler(async (req, res) => {
-  const d = await svc.getDevis(req.params["id"]!);
+  const d = await svc.getDevis(req.user!.id, req.params["id"]!);
   return res.json(d);
 }));
 
@@ -33,15 +33,16 @@ router.post("/", requireAuth, requireRole(...roles), asyncHandler(async (req, re
 router.patch("/:id", requireAuth, requireRole(...roles), asyncHandler(async (req, res) => {
   const parsed = devisUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ code: "VALIDATION_ERROR", message: "Données invalides", details: parsed.error.flatten().fieldErrors } satisfies ApiError);
-  const updated = await svc.updateDevis(req.params["id"]!, parsed.data);
+  const updated = await svc.updateDevis(req.user!.id, req.params["id"]!, parsed.data);
   return res.json(updated);
 }));
 
 router.delete("/:id", requireAuth, requireRole(...roles), asyncHandler(async (req, res) => {
-  const result = await svc.deleteDevis(req.params["id"]!);
+  const result = await svc.deleteDevis(req.user!.id, req.params["id"]!);
   return res.json(result);
 }));
 
 export default router;
+
 
 
