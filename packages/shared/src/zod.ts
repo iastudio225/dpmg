@@ -689,6 +689,8 @@ export const demandeStatsSchema = z.object({
   enAttenteDecision: z.number().int().nonnegative(),
   enAttenteFinancement: z.number().int().nonnegative(),
   enAttenteExecution: z.number().int().nonnegative(),
+  enAttenteConfirmationSatisfaction: z.number().int().nonnegative(),
+  cloturees: z.number().int().nonnegative(),
   retournees: z.number().int().nonnegative(),
   refusees: z.number().int().nonnegative(),
   urgentes: z.number().int().nonnegative(),

@@ -472,6 +472,14 @@ export function Dashboard() {
           <div style={styles.statHeader}>En attente d'exécution</div>
           {statValue(stats?.enAttenteExecution ?? 0)}
         </div>
+        <div className="card" style={styles.statCard} data-testid="stat-en-attente-confirmation-satisfaction">
+          <div style={styles.statHeader}>En attente de confirmation satisfaction</div>
+          {statValue(stats?.enAttenteConfirmationSatisfaction ?? 0)}
+        </div>
+        <div className="card" style={styles.statCard} data-testid="stat-cloturees">
+          <div style={styles.statHeader}>Clôturées</div>
+          {statValue(stats?.cloturees ?? 0)}
+        </div>
         <div className="card" style={styles.statCard} data-testid="stat-retournees">
           <div style={styles.statHeader}>Retournées</div>
           {statValue(stats?.retournees ?? 0)}

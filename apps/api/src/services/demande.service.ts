@@ -1640,6 +1640,8 @@ export interface DemandeStats {
   enAttenteDecision: number;
   enAttenteFinancement: number;
   enAttenteExecution: number;
+  enAttenteConfirmationSatisfaction: number;
+  cloturees: number;
   retournees: number;
   refusees: number;
   urgentes: number;
@@ -1664,6 +1666,8 @@ export async function getDemandeStats(
     EN_ATTENTE_DECISION: 0,
     EN_ATTENTE_FINANCEMENT: 0,
     EN_ATTENTE_EXECUTION: 0,
+    EN_ATTENTE_CONFIRMATION_SATISFACTION: 0,
+    CLOTUREE: 0,
     RETOURNEE: 0,
     REFUSEE: 0,
   };
@@ -1685,6 +1689,8 @@ const urgentCount = await prisma.demande.count({
     enAttenteDecision: counts["EN_ATTENTE_DECISION"] ?? 0,
     enAttenteFinancement: counts["EN_ATTENTE_FINANCEMENT"] ?? 0,
     enAttenteExecution: counts["EN_ATTENTE_EXECUTION"] ?? 0,
+    enAttenteConfirmationSatisfaction: counts["EN_ATTENTE_CONFIRMATION_SATISFACTION"] ?? 0,
+    cloturees: counts["CLOTUREE"] ?? 0,
     retournees: counts["RETOURNEE"] ?? 0,
     refusees: counts["REFUSEE"] ?? 0,
     urgentes: urgentCount,
