@@ -15,7 +15,7 @@ const prismaPool = (prisma as unknown as { $pool: Pool }).$pool;
  * permet de fonctionner derrière un accès HTTP (ex. environnement interne
  * sans TLS), au prix de la protection `Secure`.
  */
-function cookieSecurity(): { secure: boolean; sameSite: "lax" | "none" } {
+export function cookieSecurity(): { secure: boolean; sameSite: "lax" | "none" } {
   const isProduction = env.NODE_ENV === "production";
   const allowInsecure = process.env["COOKIE_SECURE"] === "false";
   const secure = isProduction && !allowInsecure;

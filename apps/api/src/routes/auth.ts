@@ -8,7 +8,7 @@ import { ZodError } from "zod";
 import { findUserByEmail, verifyPassword, createSessionRecord, deleteSessionRecord } from "../services/auth.service";
 import { changePassword } from "../services/user.service";
 import { randomBytes } from "crypto";
-import { env } from "../config";
+import { cookieSecurity } from "../config/session";
 
 const router: Router = Router();
 
@@ -83,10 +83,11 @@ router.post("/login", loginRateLimiter, asyncHandler(async (req: Request, res: R
 
     const validatedResponse = authMeResponseSchema.parse(response);
 
+    const security = cookieSecurity();
     res.cookie("dpmg.sid", token, {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+      secure: security.secure,
+      sameSite: security.sameSite,
       maxAge: 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -150,10 +151,11 @@ router.post("/logout", requireAuth, asyncHandler(async (req: Request, res: Respo
       await deleteSessionRecord(token);
     }
 
+    const security = cookieSecurity();
     res.clearCookie("dpmg.sid", {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+      secure: security.secure,
+      sameSite: security.sameSite,
       path: "/",
     });
 
