@@ -399,6 +399,18 @@ export const demandeDecisionTypeSchema = z.enum([
 ]);
 export type DemandeDecisionType = z.infer<typeof demandeDecisionTypeSchema>;
 
+export const demandeDecisionItemSchema = z.object({
+  id: z.string(),
+  type: demandeDecisionTypeSchema,
+  actorId: z.string(),
+  actorFirstName: z.string().nullable(),
+  actorLastName: z.string().nullable(),
+  motif: z.string().nullable(),
+  commentaire: z.string().nullable(),
+  createdAt: z.string().datetime(),
+});
+export type DemandeDecisionItem = z.infer<typeof demandeDecisionItemSchema>;
+
 export const demandeCategorySchema = z.enum(["INFRASTRUCTURE", "LOGISTIQUE", "MAGASIN"]);
 export type DemandeCategory = z.infer<typeof demandeCategorySchema>;
 
@@ -466,6 +478,7 @@ export const demandeResponseSchema = z.object({
   departmentAvisMotif: z.string().nullable(),
   departmentAvisCommentaire: z.string().nullable(),
   executionStartedAt: z.string().datetime().nullable(),
+  decisions: z.array(demandeDecisionItemSchema).default([]),
 });
 
 export type DemandeResponse = z.infer<typeof demandeResponseSchema>;

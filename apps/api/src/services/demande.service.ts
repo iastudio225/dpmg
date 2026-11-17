@@ -71,12 +71,25 @@ function toResponse(demande: DemandeWithRelations): DemandeResponse {
     departmentAvisMotif: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.motif ?? null,
     departmentAvisCommentaire: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.commentaire ?? null,
     executionStartedAt: demande.executionStartedAt?.toISOString() ?? null,
+    decisions: (((demande as any).decisions ?? []) as any[]).map((d) => ({
+      id: d.id,
+      type: d.type,
+      actorId: d.actorId,
+      actorFirstName: d.actor?.firstName ?? null,
+      actorLastName: d.actor?.lastName ?? null,
+      motif: d.motif ?? null,
+      commentaire: d.commentaire ?? null,
+      createdAt: d.createdAt.toISOString(),
+    })),
   });
 }
 
 const includeRelations = {
   department: { select: { code: true, name: true } },
-  decisions: { orderBy: { createdAt: "desc" } },
+  decisions: {
+    orderBy: { createdAt: "desc" },
+    include: { actor: { select: { firstName: true, lastName: true } } },
+  },
   author: {
     select: {
       firstName: true,

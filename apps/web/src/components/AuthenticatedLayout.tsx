@@ -69,9 +69,14 @@ export function AuthenticatedLayout() {
 
   const isAdmin = hasAnyRole(["TECHNICAL_ADMIN", "SUPER_ADMIN"]);
 
+  const canConsolidate = hasAnyRole(["DPMG_MANAGER", "DPMG_DELEGATE"]);
+
   const navItems = [
     { path: "/", label: "Tableau de bord", icon: DashboardIcon },
     { path: "/demandes", label: "Demandes", icon: DemandesIcon },
+    ...(canConsolidate || isAdmin ? [
+          { path: "/consolidations", label: "Consolidations", icon: StructuresIcon },
+        ] : []),
     ...(isAdmin ? [
           { path: "/structures", label: "Structures", icon: StructuresIcon },
           { path: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon },

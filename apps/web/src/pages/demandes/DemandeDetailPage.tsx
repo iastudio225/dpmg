@@ -1165,6 +1165,26 @@ export function DemandeDetailPage() {
           </div>
         )}
 
+        {(demande.decisions ?? []).length > 0 && (
+          <div style={styles.descriptionSection}>
+            <h2 style={styles.descriptionLabel}>Historique des décisions</h2>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {(demande.decisions ?? []).map((d) => (
+                <li key={d.id} style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <strong>{d.type}</strong>
+                  {" — "}
+                  {new Date(d.createdAt).toLocaleString("fr-FR")}
+                  {(d.actorFirstName || d.actorLastName) && (
+                    <> par {d.actorFirstName ?? ""} {d.actorLastName ?? ""}</>
+                  )}
+                  {d.motif && <> — motif : {d.motif}</>}
+                  {d.commentaire && <> — {d.commentaire}</>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {demande.satisfactionProofUrl ? (
           <div style={styles.descriptionSection}>
             <h2 style={styles.descriptionLabel}>Justificatif de satisfaction</h2>
