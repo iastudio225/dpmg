@@ -19,6 +19,7 @@
     "db:seed": "tsx src/scripts/seed-demo.ts",
     "db:seed:admin": "tsx src/scripts/create-admin.ts",
     "db:seed:superadmin": "tsx src/scripts/create-super-admin.ts",
+    "db:reset:superadmin": "tsx src/scripts/reset-super-admin-password.ts",
     "notifications:worker": "tsx src/worker/notifications.ts",
     "notifications:worker:test": "tsx src/worker/notifications-test.ts"
   },

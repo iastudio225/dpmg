@@ -10,33 +10,20 @@ const PgSession = pgSimple(session);
 
 const prismaPool = (prisma as unknown as { $pool: Pool }).$pool;
 
-export function createSessionMiddleware(): RequestHandler {
+/**
+ * En production, le cookie est `secure` par défaut. `COOKIE_SECURE=false`
+ * permet de fonctionner derrière un accès HTTP (ex. environnement interne
+ * sans TLS), au prix de la protection `Secure`.
+ */
+function cookieSecurity(): { secure: boolean; sameSite: "lax" | "none" } {
   const isProduction = env.NODE_ENV === "production";
-
-  return session({
-    store: new PgSession({
-      pool: prismaPool,
-      tableName: "session",
-      createTableIfMissing: false,
-    }),
-    secret: env.SESSION_SECRET || "dev-secret-change-in-production",
-    name: "dpmg.sid",
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    cookie: {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
-      maxAge: env.SESSION_MAX_AGE,
-      path: "/",
-    },
-  });
+  const allowInsecure = process.env["COOKIE_SECURE"] === "false";
+  const secure = isProduction && !allowInsecure;
+  return { secure, sameSite: secure ? "none" : "lax" };
 }
 
-export function getSessionOptions() {
-  const isProduction = env.NODE_ENV === "production";
-
+function buildOptions() {
+  const { secure, sameSite } = cookieSecurity();
   return {
     store: new PgSession({
       pool: prismaPool,
@@ -50,10 +37,18 @@ export function getSessionOptions() {
     rolling: true,
     cookie: {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure,
+      sameSite,
       maxAge: env.SESSION_MAX_AGE,
       path: "/",
     },
   };
+}
+
+export function createSessionMiddleware(): RequestHandler {
+  return session(buildOptions());
+}
+
+export function getSessionOptions() {
+  return buildOptions();
 }
