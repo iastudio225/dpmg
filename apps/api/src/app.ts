@@ -20,6 +20,11 @@ import databaseAdminRouter from "./routes/database-admin";
 
 const app: Express = express();
 
+// Derrière le proxy Coolify/Nginx : utiliser l'IP réelle du client
+// (X-Forwarded-For) au lieu de l'IP du proxy, sinon tous les utilisateurs
+// partagent le même quota de rate limiting.
+app.set("trust proxy", 1);
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));

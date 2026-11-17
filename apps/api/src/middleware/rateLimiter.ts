@@ -10,7 +10,14 @@ export const loginRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || "unknown",
+  // Ne compter que les échecs, et individualiser par IP + email pour éviter
+  // qu'un utilisateur bloque tous les autres derrière une même IP (bureau/NAT).
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const body = (req as unknown as { body?: { email?: unknown } }).body;
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    return `${req.ip || "unknown"}:${email}`;
+  },
   handler: (_req, res) => {
     res.status(429).json({
       code: "RATE_LIMIT_EXCEEDED",
