@@ -1887,6 +1887,18 @@ export async function confirmSatisfaction(id: string, userId: string): Promise<D
       await tx.demandeDecision.create({
         data: { demandeId: id, actorId: userId, type: "DEMANDE_EXECUTEE", motif: null, commentaire: existing.satisfactionObservations },
       });
+      await createNotificationOutboxEntries(tx, {
+        type: "SATISFACTION_CONFIRMEE",
+        demande: {
+          id: existing.id,
+          reference: existing.reference,
+          authorId: existing.authorId,
+          departmentId: existing.departmentId,
+          department: { code: existing.department.code, structureId: existing.department.structureId ?? null },
+          isUrgent: existing.isUrgent,
+        },
+        eventSourceId: `${id}:satisfaction-confirmee`,
+      });
       return result;
     });
   } catch (error: any) {

@@ -22,6 +22,7 @@ export type NotificationEventType =
   | "DEMANDE_EN_ATTENTE_PROLONGEE"
   | "DEMANDE_EXECUTION"
   | "DEMANDE_EXECUTEE"
+  | "SATISFACTION_CONFIRMEE"
   | "DEMANDE_CLOTUREE";
 
 export interface DemandeForNotification {
@@ -65,6 +66,8 @@ function notificationTitle(type: string): string {
       return "Demande prise en charge";
     case "DEMANDE_EXECUTEE":
       return "Demande déclarée satisfaite";
+    case "SATISFACTION_CONFIRMEE":
+      return "Satisfaction confirmée — demande à clôturer";
     case "DEMANDE_CLOTUREE":
       return "Demande clôturée";
     default:
@@ -370,6 +373,7 @@ export async function resolveRecipients(
     case "DEMANDE_EXECUTION":
       break;
     case "DEMANDE_EXECUTEE":
+    case "SATISFACTION_CONFIRMEE":
       {
         const dpmg = await resolveDpmgRecipients(tx, demande.department.code);
         recipients.push(...dpmg);
