@@ -222,6 +222,11 @@ export const demandesApi = {
       }),
     }),
 
+  confirmSatisfaction: (id: string) =>
+    fetchApi<DemandeResponse>(`/demandes/${encodeURIComponent(id)}/satisfaction/confirm`, {
+      method: "POST",
+    }),
+
   /**
    * Déclare la satisfaction avec un fichier justificatif téléversé.
    * Le fichier est envoyé en corps brut ; son nom passe par `X-File-Name`.

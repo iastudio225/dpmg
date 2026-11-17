@@ -41,6 +41,8 @@ interface DemandeRow {
   submittedAt: Date | null;
   satisfactionProofUrl: string | null;
   satisfactionObservations: string | null;
+  satisfiedBy: string | null;
+  satisfiedAt: Date | null;
   closureReturnReason: string | null;
   departmentAvisMotif?: string | null;
   departmentAvisCommentaire?: string | null;
@@ -123,6 +125,8 @@ function toDemandeResponse(row: DemandeRow): DemandeResponse {
     submittedAt: row.submittedAt?.toISOString() ?? null,
     satisfactionProofUrl: row.satisfactionProofUrl ?? null,
     satisfactionObservations: row.satisfactionObservations ?? null,
+    satisfiedBy: row.satisfiedBy ?? null,
+    satisfiedAt: row.satisfiedAt?.toISOString() ?? null,
     closureReturnReason: row.closureReturnReason ?? null,
     departmentAvisMotif: row.departmentAvisMotif ?? null,
     departmentAvisCommentaire: row.departmentAvisCommentaire ?? null,

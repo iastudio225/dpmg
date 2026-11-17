@@ -188,6 +188,7 @@ export function DemandeDetailPage() {
   const [satisfactionObservations, setSatisfactionObservations] = useState("");
   const [satisfactionErrors, setSatisfactionErrors] = useState<Record<string, string>>({});
   const [isClosingLoading, setIsClosingLoading] = useState(false);
+  const [isConfirmLoading, setIsConfirmLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Boîte de dialogue générique des actions (refus, retour, contrôle DFC, observation…)
@@ -637,6 +638,24 @@ export function DemandeDetailPage() {
       }
     } finally {
       setIsSatisfactionLoading(false);
+    }
+  }
+
+  async function handleConfirmSatisfaction() {
+    if (!demande || isConfirmLoading) return;
+    setIsConfirmLoading(true);
+    setActionError(null);
+    try {
+      const updated = await demandesApi.confirmSatisfaction(demande.id);
+      setDemande(updated);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(err.message || "Erreur lors de la confirmation de satisfaction");
+      } else {
+        setActionError("Erreur de connexion au serveur");
+      }
+    } finally {
+      setIsConfirmLoading(false);
     }
   }
 
@@ -1393,6 +1412,38 @@ export function DemandeDetailPage() {
             ))}
           </div>
         )}
+
+        {isAuthor &&
+          demande?.status === "EN_ATTENTE_CONFIRMATION_SATISFACTION" &&
+          demande.satisfactionProofUrl &&
+          !demande.satisfiedBy && (
+            <div style={styles.card}>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                Satisfaction de l'exécution
+              </h2>
+              <p style={styles.descriptionText}>
+                L'exécution a été déclarée terminée avec un justificatif. Confirmez-vous que vous êtes satisfait ?
+              </p>
+              <button
+                type="button"
+                style={styles.primaryButton}
+                disabled={isConfirmLoading}
+                onClick={handleConfirmSatisfaction}
+              >
+                {isConfirmLoading ? "Confirmation..." : "Confirmer la satisfaction"}
+              </button>
+            </div>
+          )}
+
+        {isAuthor &&
+          demande?.status === "EN_ATTENTE_CONFIRMATION_SATISFACTION" &&
+          demande.satisfiedBy && (
+            <div style={styles.card}>
+              <p style={styles.descriptionText}>
+                Satisfaction confirmée par le demandeur. En attente de clôture par la DPMG.
+              </p>
+            </div>
+          )}
 
         {canExecution && !isEditOpen && (
           <>

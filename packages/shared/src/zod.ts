@@ -460,6 +460,8 @@ export const demandeResponseSchema = z.object({
   submittedAt: z.string().datetime().nullable(),
   satisfactionProofUrl: z.string().nullable(),
   satisfactionObservations: z.string().nullable(),
+  satisfiedBy: z.string().nullable(),
+  satisfiedAt: z.string().datetime().nullable(),
   closureReturnReason: z.string().nullable(),
   departmentAvisMotif: z.string().nullable(),
   departmentAvisCommentaire: z.string().nullable(),

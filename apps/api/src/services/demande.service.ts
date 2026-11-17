@@ -65,6 +65,8 @@ function toResponse(demande: DemandeWithRelations): DemandeResponse {
     submittedAt: demande.submittedAt?.toISOString() ?? null,
     satisfactionProofUrl: demande.satisfactionProofUrl ?? null,
     satisfactionObservations: demande.satisfactionObservations ?? null,
+    satisfiedBy: demande.satisfiedBy ?? null,
+    satisfiedAt: demande.satisfiedAt?.toISOString() ?? null,
     closureReturnReason: demande.closureReturnReason ?? null,
     departmentAvisMotif: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.motif ?? null,
     departmentAvisCommentaire: (demande as any).decisions?.find((d: any) => d.type === "AVIS_DEPARTEMENTAL")?.commentaire ?? null,
