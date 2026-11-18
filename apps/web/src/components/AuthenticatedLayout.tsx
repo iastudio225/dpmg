@@ -113,8 +113,8 @@ export function AuthenticatedLayout() {
       left: 0,
       height: "100vh",
       width: "var(--sidebar-width)",
-      background: "var(--color-background)",
-      borderRight: "1px solid var(--color-border)",
+      background: "#123f58",
+      borderRight: "1px solid rgba(255,255,255,.08)",
       display: "flex",
       flexDirection: "column" as const,
       zIndex: 1000,
@@ -133,34 +133,34 @@ export function AuthenticatedLayout() {
       display: "flex",
       alignItems: "center",
       gap: "0.75rem",
-      padding: "1.5rem 1.25rem",
-      borderBottom: "1px solid var(--color-border)",
+      padding: "1.25rem 1rem",
+      borderBottom: "1px solid rgba(255,255,255,.12)",
     }),
     logoMark: css({
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      width: "40px",
-      height: "40px",
-      borderRadius: "var(--radius-md)",
-      background: "var(--color-primary)",
+      width: "48px",
+      height: "48px",
+      borderRadius: "11px",
+      background: "#ffffff",
       color: "#ffffff",
       flexShrink: 0,
     }),
     appName: css({
       fontSize: "1.25rem",
       fontWeight: 700,
-      color: "var(--color-text)",
+      color: "#ffffff",
       letterSpacing: "-0.01em",
     }),
     appTagline: css({
       fontSize: "0.75rem",
-      color: "var(--color-text-muted)",
+      color: "rgba(255,255,255,.76)",
       lineHeight: 1.2,
     }),
     nav: css({
       flex: 1,
-      padding: "1rem 0.75rem",
+      padding: "1.25rem 0.75rem",
       overflowY: "auto" as const,
     }),
     navLabel: css({
@@ -168,7 +168,7 @@ export function AuthenticatedLayout() {
       fontWeight: 600,
       textTransform: "uppercase" as const,
       letterSpacing: "0.08em",
-      color: "var(--color-text-muted)",
+      color: "rgba(255,255,255,.62)",
       padding: "0 0.75rem",
       marginBottom: "0.5rem",
     }),
@@ -183,7 +183,7 @@ export function AuthenticatedLayout() {
       alignItems: "center",
       gap: "0.75rem",
       padding: "0.6875rem 0.75rem",
-      color: "var(--color-text)",
+      color: "rgba(255,255,255,.94)",
       textDecoration: "none",
       borderRadius: "var(--radius-md)",
       fontSize: "0.9375rem",
@@ -191,8 +191,9 @@ export function AuthenticatedLayout() {
       transition: "background-color var(--transition), color var(--transition)",
     }),
     navLinkActive: css({
-      background: "var(--color-primary-light)",
-      color: "var(--color-primary)",
+      background: "#e9f3f8",
+      color: "#104f6d",
+      boxShadow: "inset 3px 0 #ffd000",
     }),
     navIcon: css({
       width: "20px",
@@ -213,7 +214,7 @@ export function AuthenticatedLayout() {
       display: "flex",
       alignItems: "center",
       gap: "1rem",
-      padding: isNarrow ? "0.75rem 1rem" : "1rem 2rem",
+      padding: isNarrow ? "0.75rem 1rem" : "0.8rem 1.75rem",
       background: "var(--color-background)",
       borderBottom: "1px solid var(--color-border)",
       position: "sticky" as const,
@@ -308,7 +309,7 @@ export function AuthenticatedLayout() {
       flex: 1,
       padding: isNarrow ? "1.25rem 1rem" : "2rem",
       width: "100%",
-      maxWidth: "1280px",
+      maxWidth: "1600px",
       margin: "0 auto",
     }),
   };
@@ -323,14 +324,12 @@ export function AuthenticatedLayout() {
       >
         <div style={styles.sidebarHeader}>
           <span style={styles.logoMark} aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
+            <img src="/Logo-laposte.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 11 }} />
           </span>
           <span>
             <span style={styles.appName}>DPMG</span>
             <br />
-            <span style={styles.appTagline}>Espace administration</span>
+            <span style={styles.appTagline}>Direction du Patrimoine<br />et des Moyens Généraux</span>
           </span>
         </div>
 
