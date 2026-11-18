@@ -31,6 +31,7 @@ import type {
   ConsolidationAddDemandesRequest,
   ConsolidationAvisCompletenessResponse,
   ConsolidationObservationResponse,
+  RapportGlobalResponse,
 } from "@dpmg/shared";
 
 const API_BASE = "/api";
@@ -523,4 +524,25 @@ export const consolidationsApi = {
     fetchApi<ConsolidationObservationResponse[]>(`/consolidations/${encodeURIComponent(id)}/observations`),
   addObservation: (id: string, commentaire: string) =>
     fetchApi<ConsolidationObservationResponse>(`/consolidations/${encodeURIComponent(id)}/observations`, { method: "POST", body: JSON.stringify({ commentaire }) }),
+};
+
+export const rapportsApi = {
+  global: (params?: {
+    from?: string;
+    to?: string;
+    departmentId?: string;
+    structureId?: string;
+    status?: DemandeStatus;
+    urgent?: boolean;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.from) query.set("from", params.from);
+    if (params?.to) query.set("to", params.to);
+    if (params?.departmentId) query.set("departmentId", params.departmentId);
+    if (params?.structureId) query.set("structureId", params.structureId);
+    if (params?.status) query.set("status", params.status);
+    if (params?.urgent !== undefined) query.set("urgent", String(params.urgent));
+    const qs = query.toString();
+    return fetchApi<RapportGlobalResponse>(`/rapports/global${qs ? `?${qs}` : ""}`);
+  },
 };

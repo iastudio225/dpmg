@@ -710,6 +710,76 @@ export const demandeStatsSchema = z.object({
 });
 export type DemandeStatsResponse = z.infer<typeof demandeStatsSchema>;
 
+/** Date de filtre de rapport au format AAAA-MM-JJ. */
+const rapportDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Date attendue au format AAAA-MM-JJ" });
+
+export const rapportGlobalQuerySchema = z.object({
+  from: rapportDateSchema.optional(),
+  to: rapportDateSchema.optional(),
+  departmentId: z.string().min(1).optional(),
+  structureId: z.string().min(1).optional(),
+  status: demandeStatusSchema.optional(),
+  urgent: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+});
+export type RapportGlobalQuery = z.infer<typeof rapportGlobalQuerySchema>;
+
+export const rapportDemandeRowSchema = z.object({
+  id: z.string(),
+  reference: z.string(),
+  title: z.string(),
+  status: demandeStatusSchema,
+  category: demandeCategorySchema,
+  departmentId: z.string(),
+  departmentCode: z.string(),
+  departmentName: z.string(),
+  structureId: z.string().nullable(),
+  structureName: z.string().nullable(),
+  authorFirstName: z.string(),
+  authorLastName: z.string(),
+  isUrgent: z.boolean(),
+  createdAt: z.string().datetime(),
+  submittedAt: z.string().datetime().nullable(),
+  closedAt: z.string().datetime().nullable(),
+});
+export type RapportDemandeRow = z.infer<typeof rapportDemandeRowSchema>;
+
+export const rapportCountByStatusItemSchema = z.object({
+  status: demandeStatusSchema,
+  count: z.number().int().nonnegative(),
+});
+
+export const rapportCountByDepartmentItemSchema = z.object({
+  departmentId: z.string(),
+  departmentCode: z.string(),
+  departmentName: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export const rapportCountByStructureItemSchema = z.object({
+  structureId: z.string().nullable(),
+  structureName: z.string().nullable(),
+  count: z.number().int().nonnegative(),
+});
+
+export const rapportGlobalResponseSchema = z.object({
+  generatedAt: z.string().datetime(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  total: z.number().int().nonnegative(),
+  urgentes: z.number().int().nonnegative(),
+  cloturees: z.number().int().nonnegative(),
+  byStatus: z.array(rapportCountByStatusItemSchema),
+  byDepartment: z.array(rapportCountByDepartmentItemSchema),
+  byStructure: z.array(rapportCountByStructureItemSchema),
+  demandes: z.array(rapportDemandeRowSchema),
+});
+export type RapportGlobalResponse = z.infer<typeof rapportGlobalResponseSchema>;
+
 export const notificationListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).default(20),
   cursor: z.string().optional(),

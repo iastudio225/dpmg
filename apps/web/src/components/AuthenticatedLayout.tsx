@@ -76,6 +76,7 @@ export function AuthenticatedLayout() {
     { path: "/demandes", label: "Demandes", icon: DemandesIcon },
     ...(canConsolidate || isAdmin ? [
           { path: "/consolidations", label: "Consolidations", icon: StructuresIcon },
+          { path: "/rapports", label: "Rapports", icon: DashboardIcon },
         ] : []),
     ...(isAdmin ? [
           { path: "/structures", label: "Structures", icon: StructuresIcon },

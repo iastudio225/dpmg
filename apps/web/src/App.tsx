@@ -21,6 +21,7 @@ import { CpmpPage } from "./pages/cpmp/CpmpPage";
 import { PrestatairesPage } from "./pages/cpmp/PrestatairesPage";
 import { CpmpDemandeDetailPage } from "./pages/cpmp/CpmpDemandeDetailPage";
 import { ConsolidationsPage } from "./pages/consolidations/ConsolidationsPage";
+import { RapportsPage } from "./pages/rapports/RapportsPage";
 import "./index.css";
 
 function css<T extends React.CSSProperties>(styles: T): T {
@@ -95,6 +96,7 @@ function AppRoutes() {
         <Route path="departements/:id/modifier" element={<DepartementForm />} />
         <Route path="parametres" element={<ParametresPage />} />
         <Route path="consolidations" element={<ConsolidationsPage />} />
+        <Route path="rapports" element={<RapportsPage />} />
         <Route path="dg" element={<DgPage />} />
         <Route path="cpmp" element={<CpmpPage />} />
         <Route path="cpmp/prestataires" element={<PrestatairesPage />} />

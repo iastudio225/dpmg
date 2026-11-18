@@ -39,6 +39,7 @@ let intruderId = "";
 let tokenDept = "";
 let tokenDpmg = "";
 let tokenIntruder = "";
+let tokenAuthor = "";
 
 const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n", "utf8");
 const PDF_BYTES_2 = Buffer.from("%PDF-1.4\n2 0 obj\n<< /Type /Pages >>\nendobj\n%%EOF\n", "utf8");
@@ -62,6 +63,7 @@ async function createUser(tag: string, roles: { role: RoleType; structureId: str
   if (tag === "deptManager") tokenDept = token;
   if (tag === "dpmg") tokenDpmg = token;
   if (tag === "intruder") tokenIntruder = token;
+  if (tag === "auteur") tokenAuthor = token;
   return u.id;
 }
 
@@ -185,7 +187,17 @@ test("justificatif : téléversement d'un PDF puis téléchargement par un utili
 
   const db = await prisma.demande.findUnique({ where: { id: demandeId } });
   assert.equal(db!.satisfactionProofUrl, `/api/demandes/${demandeId}/justificatif`);
-  assert.ok(db!.satisfiedAt);
+  // Option B : satisfiedAt/satisfiedBy ne sont renseignés qu'après confirmation
+  // par le demandeur, pas à la simple déclaration de l'agent d'exécution.
+  assert.equal(db!.satisfiedAt, null);
+
+  const confirm = await apiJson(`/api/demandes/${demandeId}/satisfaction/confirm`, tokenAuthor, {
+    method: "POST",
+  });
+  assert.equal(confirm.status, 200);
+  const dbConfirmed = await prisma.demande.findUnique({ where: { id: demandeId } });
+  assert.ok(dbConfirmed!.satisfiedAt);
+  assert.equal(dbConfirmed!.satisfiedBy, authorId);
 
   const download = await downloadProof(demandeId, tokenDept);
   assert.equal(download.status, 200);
@@ -264,6 +276,12 @@ test("justificatif : corps vide refusé", async () => {
 test("justificatif : la clôture reste possible après téléversement", async () => {
   const demandeId = await makeDemandeStarted();
   assert.equal((await uploadProof(demandeId, tokenDept, PDF_BYTES)).status, 201);
+
+  // Option B : le demandeur doit confirmer la satisfaction avant clôture.
+  const confirm = await apiJson(`/api/demandes/${demandeId}/satisfaction/confirm`, tokenAuthor, {
+    method: "POST",
+  });
+  assert.equal(confirm.status, 200);
 
   const close = await apiJson(`/api/demandes/${demandeId}/close`, tokenDpmg, { method: "POST" });
   assert.equal(close.status, 200);

@@ -303,7 +303,7 @@ async function resolveRegionalAgencyAuthorIds(userId: string): Promise<string[]>
   return [...new Set(agencyRoles.map((r) => r.userId))];
 }
 
-async function buildDemandeVisibilityWhere(
+export async function buildDemandeVisibilityWhere(
   userId: string,
   managerScopes: string[]
 ): Promise<Prisma.DemandeWhereInput> {
