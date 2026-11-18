@@ -464,6 +464,7 @@ export const demandeResponseSchema = z.object({
   departmentId: z.string(),
   departmentCode: z.string(),
   departmentName: z.string(),
+  consolidationId: z.string().nullable(),
   authorId: z.string(),
   authorFirstName: z.string(),
   authorLastName: z.string(),

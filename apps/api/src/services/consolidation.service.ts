@@ -117,6 +117,7 @@ function toDemandeResponse(row: DemandeRow): DemandeResponse {
     departmentId: row.departmentId,
     departmentCode: row.department.code,
     departmentName: row.department.name,
+    consolidationId: row.consolidationId ?? null,
     authorId: row.authorId,
     authorFirstName: row.author.firstName,
     authorLastName: row.author.lastName,

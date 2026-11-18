@@ -516,10 +516,12 @@ export const consolidationsApi = {
     fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/demandes`, { method: "POST", body: JSON.stringify(payload) }),
   removeDemande: (id: string, demandeId: string) =>
     fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/demandes/${encodeURIComponent(demandeId)}`, { method: "DELETE" }),
+  delete: (id: string) =>
+    fetchApi<{ deleted: boolean }>(`/consolidations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   transmit: (id: string) =>
-    fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/transmit`, { method: "POST" }),
+    fetchApi<ConsolidationResponse>(`/consolidations/${encodeURIComponent(id)}/transmettre`, { method: "POST" }),
   getAvisCompleteness: (id: string) =>
-    fetchApi<ConsolidationAvisCompletenessResponse>(`/consolidations/${encodeURIComponent(id)}/avis-completeness`),
+    fetchApi<ConsolidationAvisCompletenessResponse>(`/consolidations/${encodeURIComponent(id)}/avis`),
   listObservations: (id: string) =>
     fetchApi<ConsolidationObservationResponse[]>(`/consolidations/${encodeURIComponent(id)}/observations`),
   addObservation: (id: string, commentaire: string) =>

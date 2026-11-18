@@ -57,6 +57,7 @@ function toResponse(demande: DemandeWithRelations): DemandeResponse {
     departmentId: demande.departmentId,
     departmentCode: demande.department.code,
     departmentName: demande.department.name,
+    consolidationId: demande.consolidationId ?? null,
     authorId: demande.authorId,
     authorFirstName: demande.author.firstName,
     authorLastName: demande.author.lastName,
