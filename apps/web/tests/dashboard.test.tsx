@@ -199,6 +199,7 @@ test("affiche le prénom de l'utilisateur dans le bandeau d'accueil", async () =
 });
 
 test("affiche les compteurs réels à partir des statistiques du serveur", async () => {
+  meRoles = [makeRole({ role: "SUPER_ADMIN", structureId: null, structureName: null, scope: "*" })];
   statsResponses = [
     {
       status: 200,
@@ -381,42 +382,12 @@ test("affiche un état vide avec lien de création quand aucune demande n'existe
   assert.ok((total!.textContent ?? "").includes("0"));
 });
 
-test("affiche les habilitations avec libellés français et périmètre", async () => {
-  meRoles = [
-    makeRole({
-      role: "DPMG_MANAGER",
-      structureId: "s2",
-      structureName: "Direction DPMG",
-      structureCode: "DPMG",
-      scope: "INFRA",
-    }),
-    makeRole({
-      role: "EMPLOYEE",
-      structureId: "s1",
-      structureName: "Direction Générale",
-      scope: null,
-    }),
-  ];
+test("n'affiche pas les blocs Session et Habilitations détaillés dans le dashboard opérationnel", async () => {
   listResponses = [{ status: 200, body: [] }];
   await renderDashboard();
 
-  const habilitations = container!.querySelector("[data-testid='habilitations']");
-  assert.ok(habilitations);
-  const text = habilitations!.textContent ?? "";
-  assert.ok(text.includes("Directeur DPMG"));
-  assert.ok(text.includes("Direction DPMG"));
-  assert.ok(text.includes("Périmètre : INFRA"));
-  assert.ok(text.includes("Agent"));
-  assert.ok(text.includes("Périmètre : —"));
-});
-
-test("affiche un message d'absence de rôle quand aucun rôle n'est actif", async () => {
-  meRoles = [];
-  listResponses = [{ status: 200, body: [] }];
-  await renderDashboard();
-
-  const habilitations = container!.querySelector("[data-testid='habilitations']");
-  assert.ok((habilitations!.textContent ?? "").includes("Aucun rôle actif"));
+  assert.equal(container!.querySelector("[data-testid='session-info']"), null);
+  assert.equal(container!.querySelector("[data-testid='habilitations']"), null);
 });
 
 test("adapte le message d'accueil et les raccourcis pour un responsable de périmètre", async () => {
@@ -491,20 +462,129 @@ test("effectue un seul appel à l'API des demandes par montage", async () => {
   assert.equal(fetchLog.filter((c) => c === "GET /api/demandes").length, 1);
 });
 
-test("affiche les informations de session compactes sans répéter l'email", async () => {
+// Bloc session détaillé retiré du dashboard opérationnel.
+
+const FULL_STATS = {
+  totalVisible: 1,
+  brouillons: 1,
+  enAttenteValidation: 1,
+  enAttenteAnalyse: 1,
+  enAttenteDecision: 1,
+  enAttenteFinancement: 1,
+  enAttenteExecution: 1,
+  enAttenteConfirmationSatisfaction: 1,
+  cloturees: 1,
+  retournees: 1,
+  refusees: 1,
+  urgentes: 1,
+};
+
+function renderRole(role: string, extra: Record<string, unknown> = {}) {
+  meRoles = [makeRole({ role, ...extra })];
+  statsResponses = [{ status: 200, body: FULL_STATS }];
+  listResponses = [{ status: 200, body: [] }];
+}
+
+test("vue Direction pour HIERARCHICAL_MANAGER", async () => {
+  renderRole("HIERARCHICAL_MANAGER", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-total']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-validation']"));
+  assert.ok(container!.textContent!.includes("validations hiérarchiques"));
+});
+
+test("vue Direction pour DELEGATED_REPRESENTATIVE", async () => {
+  renderRole("DELEGATED_REPRESENTATIVE", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-total']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-validation']"));
+});
+
+test("vue DPMG pour DPMG_MANAGER", async () => {
+  renderRole("DPMG_MANAGER", { scope: "*" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-analyse']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-decision']"));
+  const shortcuts = container!.querySelector("[data-testid='shortcuts']")!.textContent ?? "";
+  assert.ok(shortcuts.includes("Consolidations"));
+});
+
+test("vue DPMG pour DPMG_DELEGATE", async () => {
+  renderRole("DPMG_DELEGATE", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-analyse']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-decision']"));
+});
+
+test("vue DFC pour DFC_CONTROLLER", async () => {
+  renderRole("DFC_CONTROLLER", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-financement']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-execution']"));
+});
+
+test("vue Département pour DEPARTMENT_MANAGER", async () => {
+  renderRole("DEPARTMENT_MANAGER", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-analyse']"));
+});
+
+test("vue Département pour DEPARTMENT_DELEGATE", async () => {
+  renderRole("DEPARTMENT_DELEGATE", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-analyse']"));
+});
+
+test("vue CPMP pour CPMP_USER", async () => {
+  renderRole("CPMP_USER", { scope: "*" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-financement']"));
+  assert.ok(container!.querySelector("[data-testid='stat-cloturees']"));
+  const shortcuts = container!.querySelector("[data-testid='shortcuts']")!.textContent ?? "";
+  assert.ok(shortcuts.includes("Espace CPMP"));
+});
+
+test("vue DG pour DG_USER", async () => {
+  renderRole("DG_USER", { scope: "*" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-financement']"));
+  assert.ok(container!.querySelector("[data-testid='stat-cloturees']"));
+  const shortcuts = container!.querySelector("[data-testid='shortcuts']")!.textContent ?? "";
+  assert.ok(shortcuts.includes("Espace DG"));
+});
+
+test("vue Exécution pour EXECUTION_AGENT", async () => {
+  renderRole("EXECUTION_AGENT", { scope: "INFRA" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-execution']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-confirmation-satisfaction']"));
+});
+
+test("vue Administration pour TECHNICAL_ADMIN", async () => {
+  renderRole("TECHNICAL_ADMIN", { structureId: null, structureName: null, scope: "*" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-total']"));
+  const shortcuts = container!.querySelector("[data-testid='shortcuts']")!.textContent ?? "";
+  assert.ok(shortcuts.includes("Utilisateurs"));
+  assert.ok(shortcuts.includes("Journaux d'administration"));
+});
+
+test("vue Administration pour SUPER_ADMIN", async () => {
+  renderRole("SUPER_ADMIN", { structureId: null, structureName: null, scope: "*" });
+  await renderDashboard();
+  assert.ok(container!.querySelector("[data-testid='stat-total']"));
+});
+
+test("scénario multi-rôles DPMG + DFC", async () => {
+  meRoles = [
+    makeRole({ role: "DPMG_MANAGER", scope: "INFRA" }),
+    makeRole({ role: "DFC_CONTROLLER", scope: "INFRA" }),
+  ];
+  statsResponses = [{ status: 200, body: FULL_STATS }];
   listResponses = [{ status: 200, body: [] }];
   await renderDashboard();
-
-  const session = container!.querySelector("[data-testid='session-info']");
-  assert.ok(session);
-  const text = session!.textContent ?? "";
-  assert.ok(text.includes("Statut"));
-  assert.ok(text.includes("ACTIVE"));
-  assert.ok(text.includes("Téléphone"));
-  assert.ok(text.includes("Non renseigné"));
-  assert.ok(text.includes("Rôles actifs"));
-  assert.ok(text.includes("Membre depuis"));
-  assert.ok(text.includes("15/01/2026"));
-  assert.ok(!text.includes("alice@dpmg.fr"));
-  assert.ok(!text.includes("Alice Martin"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-analyse']"));
+  assert.ok(container!.querySelector("[data-testid='stat-en-attente-financement']"));
+  const shortcuts = container!.querySelector("[data-testid='shortcuts']")!.textContent ?? "";
+  assert.ok(shortcuts.includes("Consolidations"));
 });
