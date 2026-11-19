@@ -71,12 +71,23 @@ export function AuthenticatedLayout() {
 
   const canConsolidate = hasAnyRole(["DPMG_MANAGER", "DPMG_DELEGATE"]);
 
+  const isCpmp = hasAnyRole(["CPMP_USER"]);
+
+  const isDg = hasAnyRole(["DG_USER"]);
+
   const navItems = [
     { path: "/", label: "Tableau de bord", icon: DashboardIcon },
     { path: "/demandes", label: "Demandes", icon: DemandesIcon },
     ...(canConsolidate || isAdmin ? [
           { path: "/consolidations", label: "Consolidations", icon: StructuresIcon },
           { path: "/rapports", label: "Rapports", icon: DashboardIcon },
+        ] : []),
+    ...(isCpmp ? [
+          { path: "/cpmp", label: "Espace CPMP", icon: DemandesIcon },
+          { path: "/cpmp/prestataires", label: "Prestataires", icon: UsersIcon },
+        ] : []),
+    ...(isDg ? [
+          { path: "/dg", label: "Espace DG", icon: DemandesIcon },
         ] : []),
     ...(isAdmin ? [
           { path: "/structures", label: "Structures", icon: StructuresIcon },
